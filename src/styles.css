@@ -1,0 +1,25 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1c1c1e;
+  --panel: #f3f4f6;
+  --border: #d4d4d8;
+  --err: #b00020;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b;
+    --fg: #f4f4f5;
+    --panel: #232327;
+    --border: #3f3f46;
+    --err: #ff6b81;
+  }
+}
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: system-ui, "Segoe UI", sans-serif; }
+.app { display: flex; height: 100%; }
+.panel { width: 360px; padding: 16px; background: var(--panel); border-right: 1px solid var(--border); box-sizing: border-box; }
+.panel h1 { font-size: 15px; margin: 0 0 12px; }
+textarea { width: 100%; height: 160px; box-sizing: border-box; font-family: Consolas, monospace; font-size: 14px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; resize: vertical; }
+.error { color: var(--err); font-size: 13px; }
+.canvas { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; font-size: 1.4em; }
