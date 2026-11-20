@@ -32,3 +32,29 @@ Voraussetzungen: Node.js 20+, Rust (stable), Visual Studio Build Tools mit C++-W
     npm run tauri icon app-icon.png
     npm run tauri dev      # Entwicklung
     npm run tauri build    # Installer + exe in src-tauri/target/release
+
+## Mathe-Engine (`src/engine`)
+
+Getrennt von der Oberfläche, ohne UI-Abhängigkeiten, ohne `eval`:
+
+| Datei | Aufgabe |
+|---|---|
+| `lexer.ts`, `parser.ts` | LaTeX → AST (rekursiver Abstieg), Fehler mit Position und „unvollständig"-Flag |
+| `ast.ts` | AST-Typen, exakte Zahlen (BigInt-Brüche), Substitution, freie Symbole |
+| `simplify.ts` | exakte Vereinfachung (Brüche, Wurzeln, π-Werte, Summen, `expand`) |
+| `diff.ts` | symbolische Ableitung (Ketten-, Produkt-, Potenzregel, Hauptsatz) |
+| `eval.ts` | numerische Auswertung (Closure-Baum), Integration (Gauß–Kronrod), Grenzwerte |
+| `latex.ts` | AST → LaTeX für die Anzeige |
+
+Tests: `npm test` (laufen auch vor jedem Windows-Build; schlägt ein Test fehl, wird nicht gebaut).
+
+### Eingabekonventionen
+- Standard-LaTeX: `x^23` bedeutet wie in LaTeX `x²·3`; für Mehrstelliges `x^{23}` schreiben.
+- `\log` ist der Zehnerlogarithmus, `\ln` der natürliche; `\log_{b}` für andere Basen.
+- `\sin 2x` = sin(2x); `\sin x \cos x` = sin(x)·cos(x); `\sin^{-1}` = arcsin.
+- `f(x)=…` ist immer eine Funktionsdefinition. Ein Aufruf `f(3)` wird nur erkannt, wenn `f` als Funktion bekannt ist (`parse(src, {functions:["f"]})`).
+- Im Integral beendet `d` + Variable den Integranden (`\int_0^1 x^2\,dx`).
+- `e`, `\pi`, `\tau`, `\infty` sind Konstanten.
+
+### Noch nicht enthalten (folgt in späteren Schritten)
+Stammfunktionen und symbolische Grenzwerte/Summenformeln, Gleichungslöser, Matrizen- und Vektorrechnung (Matrizen werden bereits geparst und gesetzt), komplexe Zahlen, Ableitungsstrich `f'`, Graph-Renderer, Slider, Geometrie.
