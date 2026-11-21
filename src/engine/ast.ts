@@ -15,7 +15,8 @@ export type Expr =
   | { t: "cases"; rows: { value: Expr; cond: Expr | null }[] }
   | { t: "matrix"; rows: Expr[][]; delim: "p" | "b" | "v" | "" }
   | { t: "tuple"; items: Expr[] }
-  | { t: "def"; name: string; params: string[]; body: Expr };
+  | { t: "def"; name: string; params: string[]; body: Expr }
+  | { t: "restrict"; body: Expr; cond: Expr };
 
 export type NumE = Extract<Expr, { t: "num" }>;
 
@@ -140,6 +141,8 @@ export function mapChildren(e: Expr, f: (c: Expr) => Expr): Expr {
       return { t: "tuple", items: e.items.map(f) };
     case "def":
       return { t: "def", name: e.name, params: e.params, body: f(e.body) };
+    case "restrict":
+      return { t: "restrict", body: f(e.body), cond: f(e.cond) };
   }
 }
 

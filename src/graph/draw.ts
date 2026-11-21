@@ -135,3 +135,71 @@ export function drawMarker(ctx: CanvasRenderingContext2D, px: number, py: number
   ctx.strokeStyle = t.bg;
   ctx.stroke();
 }
+
+// ---------- Objekte aus dem Modell (PlotItem-Formen) ----------
+import type { Shape } from "./items.ts";
+
+export interface DrawnItem {
+  color: string;
+  shapes: Shape[];
+}
+
+/** Zeichnet erst alle Füllungen (halbtransparent), dann Linien, dann Punkte. */
+export function drawItems(ctx: CanvasRenderingContext2D, v: View, items: DrawnItem[]): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, v.width, v.height);
+  ctx.clip();
+
+  ctx.globalAlpha = 0.22;
+  for (const it of items) {
+    ctx.fillStyle = it.color;
+    for (const s of it.shapes) {
+      if (s.type === "fillRects") {
+        ctx.beginPath();
+        for (let i = 0; i < s.rects.length; i += 4) ctx.rect(s.rects[i], s.rects[i + 1], s.rects[i + 2], s.rects[i + 3]);
+        ctx.fill();
+      } else if (s.type === "fillPoly") {
+        ctx.beginPath();
+        for (const p of s.polys) {
+          ctx.moveTo(p[0], p[1]);
+          for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+          ctx.closePath();
+        }
+        ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  for (const it of items) {
+    ctx.strokeStyle = it.color;
+    for (const s of it.shapes) {
+      if (s.type !== "lines") continue;
+      ctx.setLineDash(s.dashed ? [8, 6] : []);
+      ctx.beginPath();
+      for (const l of s.lines) {
+        ctx.moveTo(l[0], l[1]);
+        for (let i = 2; i < l.length; i += 2) ctx.lineTo(l[i], l[i + 1]);
+      }
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+
+  for (const it of items) {
+    ctx.fillStyle = it.color;
+    for (const s of it.shapes) {
+      if (s.type !== "points") continue;
+      for (let i = 0; i < s.pts.length; i += 2) {
+        ctx.beginPath();
+        ctx.arc(s.pts[i], s.pts[i + 1], 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}

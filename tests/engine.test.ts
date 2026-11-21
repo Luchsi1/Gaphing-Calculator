@@ -181,3 +181,20 @@ test("Roundtrip: parse(toLatex(parse(s))) ist numerisch identisch", () => {
     for (const x of [0.5, 1.5, 3.1]) near(fb(x, 2), fa(x, 2), 1e-12);
   }
 });
+
+test("Definitionsbereich: \\left\\{ … \\right\\}", () => {
+  const e = parse("x^2\\left\\{x>0\\right\\}");
+  assert.equal(e.t, "restrict");
+  const f = compile(e, ["x"]);
+  near(f(2), 4);
+  assert.ok(Number.isNaN(f(-2)));
+  const g = compile(parse("\\sqrt{x}\\left\\{0\\le x\\le 4, x\\ne 1\\right\\}"), ["x"]);
+  near(g(4), 2);
+  assert.ok(Number.isNaN(g(5)) && Number.isNaN(g(1)));
+  assert.equal(toLatex(parse("x\\{x>1\\}")), "x \\left\\{ x > 1 \\right\\}");
+  const d = parse("f(x)=x^2\\left\\{x>0\\right\\}");
+  assert.equal(d.t, "def");
+  assert.equal(S("\\frac{d}{dx}\\left(x^3\\left\\{x>0\\right\\}\\right)"), "3x^{2} \\left\\{ x > 0 \\right\\}");
+  assert.equal(parse("(\\cos t,\\sin t)\\left\\{0\\le t\\le 6\\right\\}").t, "restrict");
+  assert.throws(() => parse("x\\left\\{x>0"), ParseError);
+});

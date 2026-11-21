@@ -122,29 +122,6 @@ test("Sampler: logarithmische y-Achse lässt Werte ≤ 0 aus; Budget wird eingeh
   assert.ok(lines2.length >= 1);
 });
 
-test("Modell: Funktionen, Definitionen, Parameter, Fehler", () => {
-  const m = buildModel("f(x)=x^2\na=3\na x\n\\frac{d}{dx} f(x)\nf(2)+1\ny=\\sin(x)\nx^2+y^2=1\nb x\n\\frac{1}{\n\n(1,2)");
-  const kinds = m.lines.map((l) => l.kind);
-  assert.deepEqual(kinds, ["function", "parameter", "function", "function", "function", "function", "unsupported", "error", "error", "empty", "unsupported"]);
-  assert.equal(m.params.a, 3);
-  assert.equal(m.fns.length, 5);
-  const g = (i: number) => m.fns.find((f) => f.line === i)!.f;
-  near(g(0)(3), 9);
-  near(g(2)(2), 6);
-  near(g(3)(3), 6); // Ableitung von f
-  near(g(4)(0), 5); // konstante Funktion f(2)+1
-  near(g(5)(Math.PI / 2), 1);
-  assert.match(m.lines[7].message ?? "", /„b“/);
-  assert.equal(m.lines[8].pos !== undefined, true);
-  assert.ok(m.lines[0].latex?.includes("f"));
-});
-
-test("Modell: rekursive Definition wird als Fehler gemeldet, nicht als Absturz", () => {
-  const m = buildModel("f(x)=f(x)+1");
-  assert.equal(m.lines[0].kind, "error");
-  assert.equal(m.fns.length, 0);
-});
-
 // ---------- Zeichnen (Mock-Kontext) und Leistung ----------
 import { drawBackground, drawCurves, LIGHT } from "../src/graph/draw.ts";
 import { compile, parse } from "../src/engine/index.ts";

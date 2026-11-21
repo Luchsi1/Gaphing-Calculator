@@ -26,7 +26,7 @@ function prec(e: Expr): number {
     case "num": return e.n < 0n ? 1 : e.d !== 1n ? 2 : 4;
     case "pow": return 3;
     case "sum": case "prod": case "int": case "diff": case "lim":
-    case "rel": case "cases": case "def":
+    case "rel": case "cases": case "def": case "restrict":
       return 0;
     default: return 4;
   }
@@ -172,6 +172,10 @@ export function toLatex(e: Expr): string {
       return paren(e.items.map(toLatex).join(", "));
     case "def":
       return `${nameLatex(e.name)}${paren(e.params.map(nameLatex).join(", "))} = ${toLatex(e.body)}`;
+    case "restrict": {
+      const cond = e.cond.t === "tuple" ? e.cond.items.map(toLatex).join(", ") : toLatex(e.cond);
+      return `${toLatex(e.body)} \\left\\{ ${cond} \\right\\}`;
+    }
   }
 }
 

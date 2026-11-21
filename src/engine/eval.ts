@@ -259,6 +259,11 @@ function c(e: Expr, vars: string[], ctx: Context, stack: string[]): F {
         return NaN;
       };
     }
+    case "restrict": {
+      const cond = cb(e.cond, vars, ctx, stack);
+      const body = c(e.body, vars, ctx, stack);
+      return (a) => (cond(a) ? body(a) : NaN);
+    }
     case "rel":
       throw new EngineError("Eine Relation hat keinen Zahlenwert (nur Wahrheitswert)", "not-numeric");
     default:
@@ -267,6 +272,10 @@ function c(e: Expr, vars: string[], ctx: Context, stack: string[]): F {
 }
 
 function cb(e: Expr, vars: string[], ctx: Context, stack: string[]): B {
+  if (e.t === "tuple") {
+    const all = e.items.map((x) => cb(x, vars, ctx, stack));
+    return (a) => all.every((f) => f(a));
+  }
   if (e.t !== "rel") throw new EngineError("Bedingung muss eine Relation sein (z. B. x \\geq 0)", "not-boolean");
   const fs = e.args.map((x) => c(x, vars, ctx, stack));
   const ops = e.ops;

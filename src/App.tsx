@@ -1,22 +1,47 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Tex from "./Tex.tsx";
 import GraphView from "./GraphView.tsx";
 import CalcView from "./CalcView.tsx";
+import SliderRow from "./SliderRow.tsx";
 import { buildModel } from "./graph/model.ts";
+import { type Slider, createSlider, stepSlider, sliderParams } from "./graph/sliders.ts";
 
 const START = [
-  String.raw`f(x)=\sin(x)`,
-  String.raw`\frac{1}{x}`,
+  String.raw`f(x)=a\sin(bx)`,
+  String.raw`x^2+y^2=4`,
+  String.raw`y<\frac{x^2}{4}-3`,
+  String.raw`r=1+\cos(\theta)\left\{0\le\theta\le2\pi\right\}`,
+  String.raw`(\cos t,\sin t)\left\{0\le t\le2\pi\right\}`,
   String.raw`\tan(x)`,
-  String.raw`\lfloor x \rfloor`,
-  String.raw`a=2`,
-  String.raw`\frac{x^2}{a}-3`,
 ].join("\n");
 
 export default function App() {
   const [src, setSrc] = useState<string>(START);
   const [tab, setTab] = useState<"graph" | "calc">("graph");
-  const model = useMemo(() => buildModel(src), [src]);
+  const [sliders, setSliders] = useState<Slider[]>([]);
+  const params = useMemo(() => sliderParams(sliders), [sliders]);
+  const model = useMemo(() => buildModel(src, params), [src, params]);
+
+  const addSliders = (names: string[]): void =>
+    setSliders((prev) => [...prev, ...names.filter((n) => !prev.some((s) => s.name === n)).map(createSlider)]);
+
+  // Animation: alle laufenden Slider gleichzeitig
+  const anyPlaying = sliders.some((s) => s.playing);
+  useEffect(() => {
+    if (!anyPlaying) return;
+    let id = 0;
+    let last = performance.now();
+    const tick = (now: number): void => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      setSliders((prev) => prev.map((s) => (s.playing ? stepSlider(s, dt) : s)));
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, [anyPlaying]);
+
+  const missingNew = model.missing.filter((n) => !sliders.some((s) => s.name === n));
 
   return (
     <div className="app">
@@ -37,17 +62,37 @@ export default function App() {
                       {l.kind === "error" && l.pos !== undefined ? ` (Position ${l.pos + 1})` : ""}
                     </div>
                   )}
+                  {l.kind === "pending" && l.missing && (
+                    <button className="small-btn" onClick={() => addSliders(l.missing ?? [])}>
+                      Slider anlegen
+                    </button>
+                  )}
                 </div>
               </li>
             ))}
         </ul>
+        <div className="sliders">
+          {missingNew.length > 0 && (
+            <button className="small-btn" onClick={() => addSliders(missingNew)}>
+              Slider für {missingNew.join(", ")} anlegen
+            </button>
+          )}
+          {sliders.map((s) => (
+            <SliderRow
+              key={s.name}
+              slider={s}
+              onChange={(n) => setSliders((prev) => prev.map((x) => (x.name === s.name ? n : x)))}
+              onRemove={() => setSliders((prev) => prev.filter((x) => x.name !== s.name))}
+            />
+          ))}
+        </div>
       </aside>
       <main className="main">
         <div className="tabs">
           <button className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>Graph</button>
           <button className={tab === "calc" ? "on" : ""} onClick={() => setTab("calc")}>Rechner</button>
         </div>
-        {tab === "graph" ? <GraphView fns={model.fns} /> : <CalcView src={src} />}
+        {tab === "graph" ? <GraphView items={model.items} /> : <CalcView src={src} />}
       </main>
     </div>
   );

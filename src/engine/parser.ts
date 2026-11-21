@@ -121,11 +121,34 @@ class Parser {
       } catch (e) {
         if (!(e instanceof ParseError)) throw e;
       }
-      if (def) return { t: "def", name: def.name, params: def.params, body: this.parseExpr() };
+      if (def) return { t: "def", name: def.name, params: def.params, body: this.withRestriction(this.parseExpr()) };
       this.i = save;
       this.toks = snap;
     }
-    return this.parseRelation();
+    return this.withRestriction(this.parseRelation());
+  }
+
+  atRestriction(): boolean {
+    return this.isCmd("{") || (this.isCmd("left") && this.isCmd("{", 1));
+  }
+
+  /** Definitionsbereich am Ende einer Zeile: \left\{ 0 \le t \le 1 \right\} (mehrere Bedingungen mit Komma = „und“). */
+  withRestriction(e: Expr): Expr {
+    if (!this.atRestriction()) return e;
+    const left = this.isCmd("left");
+    if (left) this.next();
+    this.next();
+    const save = this.absDepth;
+    this.absDepth = 0;
+    const items: Expr[] = [this.withRestriction(this.parseRelation())];
+    while (this.isOp(",")) {
+      this.next();
+      items.push(this.withRestriction(this.parseRelation()));
+    }
+    this.absDepth = save;
+    if (left) this.expectCmd("right");
+    this.expectCmd("}");
+    return { t: "restrict", body: e, cond: items.length === 1 ? items[0] : { t: "tuple", items } };
   }
 
   parseRelation(): Expr {
@@ -217,6 +240,7 @@ class Parser {
         return true;
       }
       case "cmd":
+        if (t.s === "left" && this.isCmd("{", 1)) return false;
         return STARTERS.has(t.s) || GREEK.has(t.s) || FUNCS.has(t.s);
       case "op":
         return t.s === "(" || (t.s === "|" && this.absDepth === 0);
@@ -316,10 +340,10 @@ class Parser {
     this.expectOp("(");
     const save = this.absDepth;
     this.absDepth = 0;
-    const args: Expr[] = [this.parseRelation()];
+    const args: Expr[] = [this.withRestriction(this.parseRelation())];
     while (this.isOp(",")) {
       this.next();
-      args.push(this.parseRelation());
+      args.push(this.withRestriction(this.parseRelation()));
     }
     this.absDepth = save;
     if (left) {
@@ -357,10 +381,10 @@ class Parser {
       this.next();
       const save = this.absDepth;
       this.absDepth = 0;
-      const items: Expr[] = [this.parseRelation()];
+      const items: Expr[] = [this.withRestriction(this.parseRelation())];
       while (this.isOp(",")) {
         this.next();
-        items.push(this.parseRelation());
+        items.push(this.withRestriction(this.parseRelation()));
       }
       this.absDepth = save;
       if (t.s === "(") {
@@ -472,10 +496,10 @@ class Parser {
     else this.err(`Ungültiges Trennzeichen nach \\left: ${describe(open)}`, open);
     const save = this.absDepth;
     this.absDepth = 0;
-    const items: Expr[] = [this.parseRelation()];
+    const items: Expr[] = [this.withRestriction(this.parseRelation())];
     while (this.isOp(",")) {
       this.next();
-      items.push(this.parseRelation());
+      items.push(this.withRestriction(this.parseRelation()));
     }
     this.absDepth = save;
     if (!this.isCmd("right")) this.err(`\\right erwartet, gefunden: ${describe(this.peek())}`);

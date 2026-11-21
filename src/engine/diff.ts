@@ -74,6 +74,8 @@ function d(e: Expr, v: string): Expr {
       return { t: "cases", rows: e.rows.map((r) => ({ value: d(r.value, v), cond: r.cond })) };
     case "tuple":
       return { t: "tuple", items: e.items.map((x) => d(x, v)) };
+    case "restrict":
+      return { t: "restrict", body: d(e.body, v), cond: e.cond };
     default:
       throw new EngineError(`Ableitung für „${e.t}“ nicht unterstützt`);
   }

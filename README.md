@@ -72,5 +72,21 @@ Bedienung: Ziehen verschiebt, Mausrad zoomt am Cursor (Shift: nur x, Alt: nur y)
 Tasten (Graph fokussiert): `+` `-` Zoom, Pfeile verschieben (Shift: weiter), `0` zurücksetzen, `1` Maßstab 1:1.
 Wertebereich, Rasterabstand und log-Achsen stehen in der Werkzeugleiste. Fährt man nahe an eine Kurve, wird f(x) angezeigt.
 
-Eingabe pro Zeile: `f(x)=…` (definiert und zeichnet f), `y=…`, ein Ausdruck in x, oder `a=2` (Parameter für andere Zeilen).
-Noch nicht im Graphen: implizite Kurven, Parametrisch, Polar, Ungleichungen, Slider.
+Eingabe pro Zeile (alles in LaTeX):
+
+| Schreibweise | Darstellung |
+|---|---|
+| `f(x)=…`, `y=…`, Ausdruck in x | Funktion (stückweise per `cases`) |
+| `x^2+y^2=25`, `x=3`, `xy=1` | implizite Kurve (Marching Squares, Polstellen werden nicht überbrückt) |
+| `r=1+\cos(\theta)` | Polarkurve (Standardbereich θ ∈ [0, 12π]) |
+| `(\cos t,\sin t)` | parametrische Kurve (Standardbereich t ∈ [−10, 10]) |
+| `(1,2)` | Punkt |
+| `y<x^2`, `x^2+y^2\le 25`, `0<y<x` | Ungleichung mit schattiertem Bereich; `<`/`>` gestrichelter, `≤`/`≥` durchgezogener Rand |
+| `… \left\{ 0\le t\le 2\pi \right\}` | Definitionsbereich/Bedingung (mehrere mit Komma = „und“), bei t und θ auch als Bereich |
+| `a=2` | Parameter für andere Zeilen |
+
+Fehlt ein Parameter (z. B. `a\sin(bx+c)`), erscheint „Slider anlegen“. Slider haben Bereich, Schrittweite und Animation
+(vorwärts, rückwärts, hin und her; Geschwindigkeit wählbar; mehrere laufen gleichzeitig). Eine Zeile `a=2` überschreibt einen Slider `a`.
+
+Noch nicht im Graphen: Ableitungsstriche (`f'`), Listen, 3D, Doppelwurzeln bei impliziten Kurven (z. B. `(x-y)^2=0`, kein Vorzeichenwechsel),
+Schnittpunkte/Nullstellen/Extrema als Markierungen.

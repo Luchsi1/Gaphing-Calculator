@@ -3,14 +3,8 @@ import {
   type View, type Ranges, defaultView, xToPx, yToPx, xFromPx, ranges, viewFromRanges, resize, pan, zoomAt,
   setScale, oneToOne, formatCoord,
 } from "./graph/viewport.ts";
-import { samplePolylines } from "./graph/sampler.ts";
-import { type Curve, type GridOptions, LIGHT, DARK, drawBackground, drawCurves, drawMarker } from "./graph/draw.ts";
-
-export interface GraphFn {
-  id: string;
-  f: (x: number) => number;
-  color: string;
-}
+import type { PlotItem } from "./graph/items.ts";
+import { type DrawnItem, type GridOptions, LIGHT, DARK, drawBackground, drawItems, drawMarker } from "./graph/draw.ts";
 
 interface Hover {
   px: number;
@@ -42,7 +36,7 @@ const toStep = (s: string): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-export default function GraphView({ fns }: { fns: GraphFn[] }) {
+export default function GraphView({ items }: { items: PlotItem[] }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -160,18 +154,9 @@ export default function GraphView({ fns }: { fns: GraphFn[] }) {
     return () => wrap.removeEventListener("keydown", key);
   }, []);
 
-  const curves = useMemo<Curve[]>(
-    () =>
-      fns.map((fn) => ({
-        color: fn.color,
-        lines: samplePolylines(fn.f, {
-          xFromPx: (p) => xFromPx(view, p),
-          yToPx: (y) => yToPx(view, y),
-          width: view.width,
-          height: view.height,
-        }),
-      })),
-    [fns, view]
+  const drawn = useMemo<DrawnItem[]>(
+    () => items.map((it) => ({ color: it.color, shapes: it.draw(view) })),
+    [items, view]
   );
 
   // Funktionswert unter dem Cursor; rastet an einer Kurve ein, wenn sie nah genug ist
@@ -179,21 +164,22 @@ export default function GraphView({ fns }: { fns: GraphFn[] }) {
     if (!hover) return null;
     const x = xFromPx(view, hover.px);
     let best: { py: number; color: string; y: number; d: number } | null = null;
-    for (const fn of fns) {
+    for (const it of items) {
+      if (!it.probe) continue;
       let y = NaN;
       try {
-        y = fn.f(x);
+        y = it.probe(x);
       } catch {
         /* ignorieren */
       }
       const py = yToPx(view, y);
       if (!Number.isFinite(py)) continue;
       const d = Math.abs(py - hover.py);
-      if (d < 14 && (!best || d < best.d)) best = { py, color: fn.color, y, d };
+      if (d < 14 && (!best || d < best.d)) best = { py, color: it.color, y, d };
     }
     if (best) return { x, y: best.y, snap: { py: best.py, color: best.color } };
     return { x, y: null, snap: null };
-  }, [hover, view, fns]);
+  }, [hover, view, items]);
 
   const grid: GridOptions = { show: showGrid, stepX: toStep(gridX), stepY: toStep(gridY) };
   const gridKey = `${grid.show}|${grid.stepX}|${grid.stepY}`;
@@ -211,10 +197,10 @@ export default function GraphView({ fns }: { fns: GraphFn[] }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const theme = dark ? DARK : LIGHT;
     drawBackground(ctx, view, theme, grid);
-    drawCurves(ctx, view, curves);
+    drawItems(ctx, view, drawn);
     if (info && hover && info.snap) drawMarker(ctx, hover.px, info.snap.py, info.snap.color, theme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, curves, dark, gridKey, info, hover]);
+  }, [view, drawn, dark, gridKey, info, hover]);
 
   const r = ranges(view);
 
