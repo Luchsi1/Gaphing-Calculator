@@ -58,3 +58,19 @@ Tests: `npm test` (laufen auch vor jedem Windows-Build; schlägt ein Test fehl, 
 
 ### Noch nicht enthalten (folgt in späteren Schritten)
 Stammfunktionen und symbolische Grenzwerte/Summenformeln, Gleichungslöser, Matrizen- und Vektorrechnung (Matrizen werden bereits geparst und gesetzt), komplexe Zahlen, Ableitungsstrich `f'`, Graph-Renderer, Slider, Geometrie.
+
+## Graph (`src/graph`, `GraphView.tsx`)
+
+| Datei | Aufgabe |
+|---|---|
+| `viewport.ts` | Welt ↔ Pixel, Zoom am Cursor, Verschieben, lineare/logarithmische Achsen, Rasterschritte, Beschriftung |
+| `sampler.ts` | adaptives Abtasten: erkennt Definitionslücken, Sprünge und Polstellen (keine Verbindungsstriche) |
+| `model.ts` | Eingabetext → darstellbare Funktionen, Definitionen `f(x)=…`, Parameter `a=2`, Fehlermeldungen pro Zeile |
+| `draw.ts` | Canvas-Zeichnung: Raster, Achsen, Kurven, Marker |
+
+Bedienung: Ziehen verschiebt, Mausrad zoomt am Cursor (Shift: nur x, Alt: nur y), Doppelklick setzt zurück.
+Tasten (Graph fokussiert): `+` `-` Zoom, Pfeile verschieben (Shift: weiter), `0` zurücksetzen, `1` Maßstab 1:1.
+Wertebereich, Rasterabstand und log-Achsen stehen in der Werkzeugleiste. Fährt man nahe an eine Kurve, wird f(x) angezeigt.
+
+Eingabe pro Zeile: `f(x)=…` (definiert und zeichnet f), `y=…`, ein Ausdruck in x, oder `a=2` (Parameter für andere Zeilen).
+Noch nicht im Graphen: implizite Kurven, Parametrisch, Polar, Ungleichungen, Slider.

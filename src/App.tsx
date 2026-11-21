@@ -1,112 +1,53 @@
 import { useMemo, useState } from "react";
-import katex from "katex";
-import {
-  parse, ParseError, simplify, derivative, toLatex, freeSymbols, evalNumber, numberToLatex,
-  type Expr,
-} from "./engine/index.ts";
+import Tex from "./Tex.tsx";
+import GraphView from "./GraphView.tsx";
+import CalcView from "./CalcView.tsx";
+import { buildModel } from "./graph/model.ts";
 
-const START = String.raw`\int_0^1 x^2\,dx`;
-
-interface Analysis {
-  input?: string;
-  simplified?: string;
-  derivative?: string;
-  numeric?: string;
-  notes: string[];
-  error?: { message: string; pos?: number };
-}
-
-function messageOf(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-function analyze(src: string): Analysis {
-  const out: Analysis = { notes: [] };
-  let expr: Expr;
-  try {
-    expr = parse(src);
-  } catch (e) {
-    out.error = { message: messageOf(e), pos: e instanceof ParseError ? e.pos : undefined };
-    return out;
-  }
-  out.input = toLatex(expr);
-  if (expr.t === "rel" || expr.t === "def" || expr.t === "matrix" || expr.t === "tuple") return out;
-  try {
-    out.simplified = toLatex(simplify(expr));
-  } catch (e) {
-    out.notes.push(messageOf(e));
-  }
-  const free = freeSymbols(expr);
-  if (free.size === 0) {
-    try {
-      out.numeric = numberToLatex(evalNumber(expr));
-    } catch (e) {
-      out.notes.push(messageOf(e));
-    }
-  } else if (free.size === 1 && free.has("x")) {
-    try {
-      out.derivative = toLatex(derivative(expr, "x"));
-    } catch (e) {
-      out.notes.push(messageOf(e));
-    }
-  } else {
-    out.notes.push(`Freie Variablen: ${[...free].join(", ")}`);
-  }
-  return out;
-}
-
-function Tex({ latex }: { latex: string }) {
-  const html = useMemo(
-    () => katex.renderToString(latex, { displayMode: true, throwOnError: false }),
-    [latex]
-  );
-  return <div className="tex" dangerouslySetInnerHTML={{ __html: html }} />;
-}
+const START = [
+  String.raw`f(x)=\sin(x)`,
+  String.raw`\frac{1}{x}`,
+  String.raw`\tan(x)`,
+  String.raw`\lfloor x \rfloor`,
+  String.raw`a=2`,
+  String.raw`\frac{x^2}{a}-3`,
+].join("\n");
 
 export default function App() {
-  const [latex, setLatex] = useState(START);
-  const a = useMemo(() => analyze(latex), [latex]);
+  const [src, setSrc] = useState<string>(START);
+  const [tab, setTab] = useState<"graph" | "calc">("graph");
+  const model = useMemo(() => buildModel(src), [src]);
 
   return (
     <div className="app">
       <aside className="panel">
-        <h1>Ausdruck (LaTeX)</h1>
-        <textarea value={latex} onChange={(e) => setLatex(e.target.value)} spellCheck={false} />
-        {a.error && (
-          <p className="error">
-            {a.error.message}
-            {a.error.pos !== undefined ? ` (Position ${a.error.pos + 1})` : ""}
-          </p>
-        )}
-        {a.notes.map((n, i) => (
-          <p className="note" key={i}>{n}</p>
-        ))}
+        <h1>Ausdrücke (LaTeX, eine pro Zeile)</h1>
+        <textarea value={src} onChange={(e: { target: { value: string } }) => setSrc(e.target.value)} spellCheck={false} />
+        <ul className="lines">
+          {model.lines
+            .filter((l) => l.kind !== "empty")
+            .map((l) => (
+              <li key={l.index} className={l.kind}>
+                <span className="swatch" style={{ background: l.kind === "function" ? l.color : "transparent" }} />
+                <div className="body">
+                  {l.latex ? <Tex latex={l.latex} inline /> : <code>{l.src}</code>}
+                  {l.message && (
+                    <div className={l.kind === "error" ? "error" : "note"}>
+                      {l.message}
+                      {l.kind === "error" && l.pos !== undefined ? ` (Position ${l.pos + 1})` : ""}
+                    </div>
+                  )}
+                </div>
+              </li>
+            ))}
+        </ul>
       </aside>
-      <main className="canvas">
-        {a.input && (
-          <section>
-            <h2>Eingabe</h2>
-            <Tex latex={a.input} />
-          </section>
-        )}
-        {a.simplified && (
-          <section>
-            <h2>Exakt vereinfacht</h2>
-            <Tex latex={a.simplified} />
-          </section>
-        )}
-        {a.numeric && (
-          <section>
-            <h2>Näherungswert (numerisch)</h2>
-            <Tex latex={`\\approx ${a.numeric}`} />
-          </section>
-        )}
-        {a.derivative && (
-          <section>
-            <h2>Ableitung nach x (exakt)</h2>
-            <Tex latex={`\\frac{d}{dx}\\left(${a.input ?? ""}\\right) = ${a.derivative}`} />
-          </section>
-        )}
+      <main className="main">
+        <div className="tabs">
+          <button className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>Graph</button>
+          <button className={tab === "calc" ? "on" : ""} onClick={() => setTab("calc")}>Rechner</button>
+        </div>
+        {tab === "graph" ? <GraphView fns={model.fns} /> : <CalcView src={src} />}
       </main>
     </div>
   );
