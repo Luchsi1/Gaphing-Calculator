@@ -2,12 +2,15 @@
 import { type View, xToPx, yToPx, xFromPx } from "./viewport.ts";
 import { samplePolylines, sampleParametric } from "./sampler.ts";
 import { sampleGrid, contourLines, fillRects } from "./implicit.ts";
+import type { Expr } from "../engine/index.ts";
+
+export type Glyph = "circle" | "ring" | "up" | "down" | "diamond" | "square";
 
 export type Shape =
   | { type: "lines"; lines: number[][]; dashed?: boolean }
   | { type: "fillPoly"; polys: number[][] }
   | { type: "fillRects"; rects: number[] }
-  | { type: "points"; pts: number[] };
+  | { type: "points"; pts: number[]; glyph?: Glyph };
 
 export type ItemKind = "explicit" | "parametric" | "polar" | "implicit" | "inequality" | "point";
 
@@ -17,8 +20,16 @@ export interface ItemBase {
   color: string;
 }
 
+/** Ausdruck einer expliziten Funktion samt Parametern – Grundlage der Funktionsanalyse. */
+export interface ItemAnalysis {
+  expr: Expr;
+  v: string;
+  params: Record<string, number>;
+}
+
 export interface PlotItem extends ItemBase {
   kind: ItemKind;
+  analysis?: ItemAnalysis;
   /** Funktionswert an der Stelle x (nur für explizite Kurven; für Anzeige beim Überfahren). */
   probe?: (x: number) => number;
   draw: (view: View) => Shape[];
@@ -38,8 +49,8 @@ const popts = (view: View) => ({
   height: view.height,
 });
 
-export function explicitItem(b: ItemBase, f: (x: number) => number): PlotItem {
-  return { ...b, kind: "explicit", probe: f, draw: (view) => [{ type: "lines", lines: samplePolylines(f, sopts(view)) }] };
+export function explicitItem(b: ItemBase, f: (x: number) => number, analysis?: ItemAnalysis): PlotItem {
+  return { ...b, kind: "explicit", probe: f, analysis, draw: (view) => [{ type: "lines", lines: samplePolylines(f, sopts(view)) }] };
 }
 
 export function parametricItem(b: ItemBase, point: (t: number) => [number, number], t0: number, t1: number, kind: ItemKind = "parametric"): PlotItem {

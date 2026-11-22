@@ -6,3 +6,8 @@ export { derivative } from "./diff.ts";
 export { compile, compileRelation, evalNumber, integrate, limitNumeric, realPow, factorial } from "./eval.ts";
 export type { Context, IntegralResult } from "./eval.ts";
 export { toLatex, numberToLatex, nameLatex } from "./latex.ts";
+export { toPolynomial, solvePolynomial, rationalForm, polyToExpr } from "./poly.ts";
+export { antiderivative, definiteIntegral } from "./integrate.ts";
+export { solveEquation, solveSystem, bindParams, rationalOf, exactRoot } from "./solve.ts";
+export type { SolveResult, SystemResult, Solution, SystemSolution } from "./solve.ts";
+export { scanRoots, scanExtrema, findPoles, endBehavior, recognize } from "./roots.ts";

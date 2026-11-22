@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import Tex from "./Tex.tsx";
+import SolveSections from "./SolveSections.tsx";
 import {
   parse, ParseError, simplify, derivative, toLatex, freeSymbols, evalNumber, numberToLatex, type Expr,
 } from "./engine/index.ts";
@@ -50,13 +51,14 @@ function analyze(src: string): Analysis {
   return out;
 }
 
-/** Rechner für die erste nicht leere Zeile: exakte Vereinfachung, Näherungswert, Ableitung. */
+/** Rechner: Gleichungen und Systeme lösen, Stammfunktion, exakte Vereinfachung, Näherungswert, Ableitung. */
 export default function CalcView({ src }: { src: string }) {
   const line = useMemo(() => src.split("\n").find((l) => l.trim() !== "") ?? "", [src]);
   const a = useMemo(() => (line ? analyze(line) : null), [line]);
   if (!a) return <div className="calc"><p className="note">Gib links einen Ausdruck ein.</p></div>;
   return (
     <div className="calc">
+      <SolveSections src={src} />
       <p className="note">Rechner für die erste Zeile: <code>{line}</code></p>
       {a.error && (
         <p className="error">

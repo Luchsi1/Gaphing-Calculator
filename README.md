@@ -90,3 +90,21 @@ Fehlt ein Parameter (z. B. `a\sin(bx+c)`), erscheint „Slider anlegen“. Slide
 
 Noch nicht im Graphen: Ableitungsstriche (`f'`), Listen, 3D, Doppelwurzeln bei impliziten Kurven (z. B. `(x-y)^2=0`, kein Vorzeichenwechsel),
 Schnittpunkte/Nullstellen/Extrema als Markierungen.
+
+## Analyse (`src/analysis`, `GraphWorkspace.tsx`, Reiter „Analyse“ neben dem Graphen)
+
+| Funktion | Verfahren |
+|---|---|
+| Nullstellen, Extrema, Wendepunkte, Asymptoten, Lücken, y-Achsenabschnitt | **rationale Funktionen exakt** (Polynomzerlegung, rationale Nullstellen, Wurzelausdrücke für Quadratisches); sonst numerisch |
+| numerisch gefundene Stellen | werden zu exakten Ausdrücken, wenn sich das durch exaktes Einsetzen **beweisen** lässt (z. B. `π/2`, `−1/e`) |
+| Schnittpunkte zweier Kurven | exakt für Polynome/rationale Funktionen, sonst numerisch |
+| Tangente und Normale | exakt, Stelle als LaTeX eingeben (`\frac{\pi}{4}`) oder im Graph anklicken |
+| Stammfunktion | Regeltabelle, Substitution, partielle Integration, Partialbrüche; **jede Stammfunktion wird durch Ableiten gegengeprüft** |
+| Integral, Fläche zwischen Kurven | exakt über die Stammfunktion, getrennt an den Schnittstellen; schattiert im Graph |
+| Gleichungen und Systeme (Reiter „Rechner“) | Polynome und rationale Funktionen exakt, lineare Systeme exakt, nichtlineare numerisch (Newton) |
+
+Jedes Ergebnis trägt die Kennzeichnung **exakt** oder **Näherung**. Uneigentliche Integrale (Polstelle im Intervall) werden nie als exakter Wert ausgegeben.
+Die Knöpfe „→ Zeile“ übernehmen ein Ergebnis (Punkt, Asymptote, Tangente, f′, F, Fläche als `A=…`) als neue, frei editierbare Zeile.
+
+Grenzen: Stammfunktionen nur, wenn eine geschlossene Form gefunden wird (nicht z. B. `e^{x^2}`, `\sin(x)/x`, `\sin^3 x`);
+Nullstellen höheren Grades ohne Wurzelausdruck nur numerisch; numerische Suche nur im sichtbaren Bereich bzw. in [−10, 10] (Rechner).

@@ -54,3 +54,24 @@ textarea { width: 100%; height: 170px; box-sizing: border-box; font-family: Cons
 .slider button, .slider select { font-size: 12px; background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; cursor: pointer; }
 .slider .range { width: 100%; margin: 6px 0 0; }
 .slider .num { width: 52px; }
+.workspace { flex: 1; display: flex; min-height: 0; position: relative; }
+.graph-col { flex: 1; min-width: 0; display: flex; }
+.graph-col .graph { flex: 1; min-width: 0; }
+.panel-toggle { position: absolute; top: 6px; right: 6px; z-index: 2; font-size: 12px; padding: 3px 8px; cursor: pointer; background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; }
+.analysis { width: 340px; flex: none; border-left: 1px solid var(--border); background: var(--panel); padding: 10px 12px 14px; overflow-y: auto; font-size: 13px; }
+.analysis h2 { font-size: 14px; margin: 0 0 8px; }
+.analysis h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; opacity: .7; margin: 14px 0 4px; border-top: 1px solid var(--border); padding-top: 8px; }
+.analysis .field { display: flex; flex-direction: column; gap: 2px; font-size: 11px; opacity: .9; margin-bottom: 6px; }
+.analysis select { font-size: 12px; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 3px; max-width: 100%; }
+.analysis .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0; }
+.analysis .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.analysis .num.wide { width: 90px; }
+.results { list-style: none; margin: 6px 0; padding: 0; }
+.results li { padding: 4px 0; border-bottom: 1px dashed var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.results .tag { font-size: 11px; font-weight: 600; min-width: 92px; }
+.badge { font-size: 10px; padding: 0 5px; border-radius: 8px; border: 1px solid var(--border); }
+.badge.exact { color: #15803d; border-color: #15803d; }
+.badge.approx { color: #b45309; border-color: #b45309; }
+.guess { font-size: 11px; opacity: .8; }
+.small-btn.on { background: var(--accent); color: #fff; }
+.analysis .error { margin: 4px 0; }

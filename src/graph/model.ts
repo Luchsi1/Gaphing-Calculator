@@ -1,7 +1,7 @@
 // Zerlegt den Eingabetext (eine Zeile = ein Ausdruck) in darstellbare Objekte, Definitionen und Parameter.
 import {
   parse, ParseError, EngineError, UndefinedSymbolError, CONSTANTS, freeSymbols, compile, compileRelation,
-  evalNumber, toLatex, add, mul, NEG1, type Expr, type DefInfo, type Context,
+  evalNumber, toLatex, add, mul, NEG1, inlineDefs, type Expr, type DefInfo, type Context,
 } from "../engine/index.ts";
 import {
   type PlotItem, type ItemKind, explicitItem, parametricItem, polarItem, implicitItem, inequalityItem,
@@ -180,7 +180,7 @@ export function buildModel(src: string, extraParams: Record<string, number> = {}
         const m = missingOf([body], [v]);
         if (m.length) return pending(m);
         const f1 = compile(withCond(body), [v], ctx);
-        items.push(explicitItem(itemBase, (x) => f1(x)));
+        items.push(explicitItem(itemBase, (x) => f1(x), { expr: inlineDefs(withCond(body), defs), v, params }));
         return plotted("explicit");
       };
 
@@ -189,7 +189,7 @@ export function buildModel(src: string, extraParams: Record<string, number> = {}
         const m = missingOf([expr.body], [expr.params[0]]);
         if (m.length) return pending(m);
         const f1 = compile(expr.body, [expr.params[0]], ctx);
-        items.push(explicitItem(itemBase, (x) => f1(x)));
+        items.push(explicitItem(itemBase, (x) => f1(x), { expr: inlineDefs(expr.body, defs), v: expr.params[0], params }));
         return plotted("explicit");
       }
 

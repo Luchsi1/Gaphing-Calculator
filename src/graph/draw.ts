@@ -192,12 +192,22 @@ export function drawItems(ctx: CanvasRenderingContext2D, v: View, items: DrawnIt
 
   for (const it of items) {
     ctx.fillStyle = it.color;
+    ctx.strokeStyle = it.color;
     for (const s of it.shapes) {
       if (s.type !== "points") continue;
+      const glyph = s.glyph ?? "circle";
       for (let i = 0; i < s.pts.length; i += 2) {
+        const x = s.pts[i];
+        const y = s.pts[i + 1];
         ctx.beginPath();
-        ctx.arc(s.pts[i], s.pts[i + 1], 5, 0, Math.PI * 2);
-        ctx.fill();
+        switch (glyph) {
+          case "up": ctx.moveTo(x, y - 7); ctx.lineTo(x - 6.5, y + 5); ctx.lineTo(x + 6.5, y + 5); ctx.closePath(); ctx.fill(); break;
+          case "down": ctx.moveTo(x, y + 7); ctx.lineTo(x - 6.5, y - 5); ctx.lineTo(x + 6.5, y - 5); ctx.closePath(); ctx.fill(); break;
+          case "diamond": ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.fill(); break;
+          case "square": ctx.rect(x - 5, y - 5, 10, 10); ctx.fill(); break;
+          case "ring": ctx.lineWidth = 2.5; ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.stroke(); break;
+          default: ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        }
       }
     }
   }

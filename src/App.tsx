@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import Tex from "./Tex.tsx";
-import GraphView from "./GraphView.tsx";
+import GraphWorkspace from "./GraphWorkspace.tsx";
 import CalcView from "./CalcView.tsx";
 import SliderRow from "./SliderRow.tsx";
 import { buildModel } from "./graph/model.ts";
 import { type Slider, createSlider, stepSlider, sliderParams } from "./graph/sliders.ts";
 
 const START = [
-  String.raw`f(x)=a\sin(bx)`,
+  String.raw`f(x)=x^3-3x`,
+  String.raw`g(x)=x`,
+  String.raw`\frac{1}{x^2-1}`,
   String.raw`x^2+y^2=4`,
-  String.raw`y<\frac{x^2}{4}-3`,
   String.raw`r=1+\cos(\theta)\left\{0\le\theta\le2\pi\right\}`,
-  String.raw`(\cos t,\sin t)\left\{0\le t\le2\pi\right\}`,
-  String.raw`\tan(x)`,
+  String.raw`y<\frac{x}{2}-3`,
 ].join("\n");
 
 export default function App() {
@@ -21,6 +21,9 @@ export default function App() {
   const [sliders, setSliders] = useState<Slider[]>([]);
   const params = useMemo(() => sliderParams(sliders), [sliders]);
   const model = useMemo(() => buildModel(src, params), [src, params]);
+
+  /** Ergebnis als neue, frei editierbare Zeile übernehmen */
+  const addLine = (latex: string): void => setSrc((prev) => `${prev.replace(/\s+$/, "")}\n${latex}`);
 
   const addSliders = (names: string[]): void =>
     setSliders((prev) => [...prev, ...names.filter((n) => !prev.some((s) => s.name === n)).map(createSlider)]);
@@ -92,7 +95,7 @@ export default function App() {
           <button className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>Graph</button>
           <button className={tab === "calc" ? "on" : ""} onClick={() => setTab("calc")}>Rechner</button>
         </div>
-        {tab === "graph" ? <GraphView items={model.items} /> : <CalcView src={src} />}
+        {tab === "graph" ? <GraphWorkspace items={model.items} lines={model.lines} onAddLine={addLine} /> : <CalcView src={src} />}
       </main>
     </div>
   );

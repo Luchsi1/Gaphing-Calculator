@@ -3,6 +3,7 @@ import {
   type Expr, type NumE, ZERO, ONE, NEG1, CONSTANTS, num, sym, pow, mul, add, fn, key, mapChildren, subst, EngineError,
 } from "./ast.ts";
 import { derivative } from "./diff.ts";
+import { integralNode } from "./integrate.ts";
 
 type Rat = { n: bigint; d: bigint };
 
@@ -123,6 +124,7 @@ function cmpAdd(a: Expr, b: Expr): number {
   return ka < kb ? -1 : ka > kb ? 1 : 0;
 }
 function rankMul(e: Expr): [number, string] {
+  if (e.t === "pow" && e.base.t === "sym" && e.base.name === "e" && e.exp.t !== "num") return [2, "e" + key(e)];
   const b = e.t === "pow" ? e.base : e;
   if (b.t === "sym") return [CONSTANTS.has(b.name) ? 0 : 1, b.name];
   if (b.t === "fn") return [2, key(b)];
@@ -337,6 +339,7 @@ export function sFn(name: string, args: Expr[]): Expr {
           break;
       }
     }
+    if (name === "abs" && a.t === "sym" && (a.name === "e" || a.name === "pi" || a.name === "tau")) return a;
     if (name === "ln") {
       if (a.t === "sym" && a.name === "e") return ONE;
       if (a.t === "pow" && a.base.t === "sym" && a.base.name === "e") return a.exp;
@@ -392,6 +395,10 @@ export function simplify(e: Expr): Expr {
     }
     case "diff":
       return derivative(e.body, e.v, e.order);
+    case "int": {
+      const node = mapChildren(e, simplify) as Extract<Expr, { t: "int" }>;
+      return integralNode(node) ?? node;
+    }
     case "def":
       return { t: "def", name: e.name, params: e.params, body: simplify(e.body) };
     default:

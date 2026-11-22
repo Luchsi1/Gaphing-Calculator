@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  type View, type Ranges, defaultView, xToPx, yToPx, xFromPx, ranges, viewFromRanges, resize, pan, zoomAt,
+  type View, type Ranges, defaultView, xToPx, yToPx, xFromPx, yFromPx, ranges, viewFromRanges, resize, pan, zoomAt,
   setScale, oneToOne, formatCoord,
 } from "./graph/viewport.ts";
 import type { PlotItem } from "./graph/items.ts";
@@ -36,7 +36,25 @@ const toStep = (s: string): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-export default function GraphView({ items }: { items: PlotItem[] }) {
+export interface HoverMarker {
+  x: number;
+  y: number;
+  label: string;
+  color: string;
+}
+
+interface Props {
+  items: PlotItem[];
+  /** Punkte mit Beschriftung, die beim Überfahren angezeigt wird */
+  markers?: HoverMarker[];
+  /** meldet den sichtbaren x-Bereich (verzögert) */
+  onRange?: (r: Ranges) => void;
+  /** Klick ohne Ziehen: Weltkoordinaten des Punkts */
+  onPick?: (p: { x: number; y: number }) => void;
+  picking?: boolean;
+}
+
+export default function GraphView({ items, markers, onRange, onPick, picking }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -47,6 +65,24 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
   const [gridY, setGridY] = useState<string>("");
   const [hover, setHover] = useState<Hover | null>(null);
   const [editing, setEditing] = useState<{ key: keyof Ranges; text: string } | null>(null);
+  const viewRef = useRef<View>(view);
+  viewRef.current = view;
+  const onPickRef = useRef(onPick);
+  onPickRef.current = onPick;
+  const onRangeRef = useRef(onRange);
+  onRangeRef.current = onRange;
+  const pickingRef = useRef<boolean>(!!picking);
+  pickingRef.current = !!picking;
+
+  useEffect(() => {
+    if (canvasRef.current) canvasRef.current.style.cursor = picking ? "copy" : "crosshair";
+  }, [picking]);
+
+  // sichtbaren Bereich (verzögert) melden
+  useEffect(() => {
+    const t = setTimeout(() => onRangeRef.current?.(ranges(view)), 150);
+    return () => clearTimeout(t);
+  }, [view]);
 
   // Hell/Dunkel folgt dem System
   useEffect(() => {
@@ -76,6 +112,7 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let drag: { x: number; y: number } | null = null;
+    let moved = 0;
     const local = (e: MouseEvent): Hover => {
       const r = canvas.getBoundingClientRect();
       return { px: e.clientX - r.left, py: e.clientY - r.top };
@@ -83,6 +120,7 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
     const down = (e: PointerEvent): void => {
       canvas.setPointerCapture(e.pointerId);
       drag = { x: e.clientX, y: e.clientY };
+      moved = 0;
       canvas.style.cursor = "grabbing";
     };
     const move = (e: PointerEvent): void => {
@@ -91,12 +129,19 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
         const dx = e.clientX - drag.x;
         const dy = e.clientY - drag.y;
         drag = { x: e.clientX, y: e.clientY };
+        moved += Math.abs(dx) + Math.abs(dy);
         setView((v) => pan(v, dx, dy));
       }
     };
-    const up = (): void => {
+    const up = (e: PointerEvent): void => {
+      const wasClick = drag !== null && moved < 4 && e.type === "pointerup";
       drag = null;
-      canvas.style.cursor = "crosshair";
+      canvas.style.cursor = pickingRef.current ? "copy" : "crosshair";
+      if (wasClick && onPickRef.current) {
+        const p = local(e);
+        const v = viewRef.current;
+        onPickRef.current({ x: xFromPx(v, p.px), y: yFromPx(v, p.py) });
+      }
     };
     const leave = (): void => {
       if (!drag) setHover(null);
@@ -181,6 +226,20 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
     return { x, y: null, snap: null };
   }, [hover, view, items]);
 
+  const hoverMarker = useMemo<HoverMarker | null>(() => {
+    if (!hover || !markers) return null;
+    let best: HoverMarker | null = null;
+    let bd = 12;
+    for (const m of markers) {
+      const d = Math.hypot(xToPx(view, m.x) - hover.px, yToPx(view, m.y) - hover.py);
+      if (d < bd) {
+        bd = d;
+        best = m;
+      }
+    }
+    return best;
+  }, [hover, markers, view]);
+
   const grid: GridOptions = { show: showGrid, stepX: toStep(gridX), stepY: toStep(gridY) };
   const gridKey = `${grid.show}|${grid.stepX}|${grid.stepY}`;
 
@@ -198,9 +257,15 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
     const theme = dark ? DARK : LIGHT;
     drawBackground(ctx, view, theme, grid);
     drawItems(ctx, view, drawn);
-    if (info && hover && info.snap) drawMarker(ctx, hover.px, info.snap.py, info.snap.color, theme);
+    if (hoverMarker) {
+      ctx.beginPath();
+      ctx.arc(xToPx(view, hoverMarker.x), yToPx(view, hoverMarker.y), 10, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = hoverMarker.color;
+      ctx.stroke();
+    } else if (info && hover && info.snap) drawMarker(ctx, hover.px, info.snap.py, info.snap.color, theme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, drawn, dark, gridKey, info, hover]);
+  }, [view, drawn, dark, gridKey, info, hover, hoverMarker]);
 
   const r = ranges(view);
 
@@ -246,7 +311,11 @@ export default function GraphView({ items }: { items: PlotItem[] }) {
         <canvas ref={canvasRef} style={{ cursor: "crosshair", touchAction: "none" }} />
       </div>
       <div className="status">
-        {info ? (
+        {hoverMarker ? (
+          <span style={{ color: hoverMarker.color }}>{hoverMarker.label}</span>
+        ) : picking ? (
+          <span>Klicke auf den Graphen, um die Stelle zu wählen …</span>
+        ) : info ? (
           <>
             <span>x = {formatCoord(info.x)}</span>
             {info.snap && info.y !== null ? (
