@@ -7,8 +7,8 @@ const Badge = ({ exact }: { exact: boolean }) => (
 );
 
 /** Gleichungen, Systeme (eine Gleichung je Zeile) und Stammfunktionen. */
-export default function SolveSections({ src }: { src: string }) {
-  const sections = useMemo(() => computeSections(src), [src]);
+export default function SolveSections({ src, range }: { src: string; range: [number, number] }) {
+  const sections = useMemo(() => computeSections(src, range), [src, range]);
   return (
     <>
       {sections.map((s, i) => (

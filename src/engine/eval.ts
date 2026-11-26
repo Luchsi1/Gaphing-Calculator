@@ -122,7 +122,20 @@ export function limitNumeric(f: (x: number) => number, to: number, dir: "" | "+"
     const v1 = f(s * 1e6);
     const v2 = f(s * 1e8);
     if (Math.abs(v2) > 1e6 && Math.abs(v2) > 2 * Math.abs(v1)) return Math.sign(v2) * Infinity;
-    return Math.abs(v2 - v1) <= 1e-4 * (1 + Math.abs(v2)) ? v2 : NaN;
+    if (Math.abs(v2 - v1) <= 1e-4 * (1 + Math.abs(v2))) return v2;
+    // langsam gegen 0 (z. B. √x/(x+1)): monoton fallend und klein
+    return Math.abs(v2) < 1e-2 && Math.abs(v2) <= 0.5 * Math.abs(v1) ? 0 : NaN;
+  }
+  // Divergenz: |f| wächst beim Annähern immer weiter (z. B. 1/x, ln x)
+  {
+    const sc = 1 + Math.abs(to);
+    const sides = dir === "" ? [-1, 1] : [dir === "+" ? 1 : -1];
+    const diverge = sides.map((sd) => {
+      const [a, b, c] = [1e-3, 1e-6, 1e-9].map((d) => f(to + sd * d * sc));
+      const grows = Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Math.abs(b) > 1.5 * Math.abs(a) && Math.abs(c) > 1.5 * Math.abs(b) && Math.abs(c) > 100;
+      return grows ? Math.sign(c) : 0;
+    });
+    if (diverge.some((x) => x !== 0)) return diverge.every((x) => x === diverge[0]) ? diverge[0] * Infinity : NaN;
   }
   const h = 1e-4;
   const one = (s: number): number => 2 * f(to + (s * h) / 2) - f(to + s * h);

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Tex from "./Tex.tsx";
 import SolveSections from "./SolveSections.tsx";
 import {
@@ -53,12 +53,25 @@ function analyze(src: string): Analysis {
 
 /** Rechner: Gleichungen und Systeme lösen, Stammfunktion, exakte Vereinfachung, Näherungswert, Ableitung. */
 export default function CalcView({ src }: { src: string }) {
+  const [lo, setLo] = useState<string>("-10");
+  const [hi, setHi] = useState<string>("10");
+  const range = useMemo<[number, number]>(() => {
+    const a = Number(lo.replace(",", "."));
+    const b = Number(hi.replace(",", "."));
+    return Number.isFinite(a) && Number.isFinite(b) && a < b ? [a, b] : [-10, 10];
+  }, [lo, hi]);
   const line = useMemo(() => src.split("\n").find((l) => l.trim() !== "") ?? "", [src]);
   const a = useMemo(() => (line ? analyze(line) : null), [line]);
   if (!a) return <div className="calc"><p className="note">Gib links einen Ausdruck ein.</p></div>;
   return (
     <div className="calc">
-      <SolveSections src={src} />
+      <div className="row">
+        <span className="note">Suchbereich für numerische Lösungen:</span>
+        <input className="num" value={lo} onChange={(e: { target: { value: string } }) => setLo(e.target.value)} />
+        <span className="note">bis</span>
+        <input className="num" value={hi} onChange={(e: { target: { value: string } }) => setHi(e.target.value)} />
+      </div>
+      <SolveSections src={src} range={range} />
       <p className="note">Rechner für die erste Zeile: <code>{line}</code></p>
       {a.error && (
         <p className="error">

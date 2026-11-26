@@ -362,6 +362,15 @@ class Parser {
         return numFromString(t.s);
       case "id": {
         const name = this.readName();
+        let primes = 0;
+        while (this.isOp("'")) {
+          this.next();
+          primes++;
+        }
+        if (primes > 0) {
+          if (!this.fns.has(name) || !this.atParenOpen()) this.err(`Ableitungsstrich nur bei definierten Funktionen mit Argument, z. B. ${name}'(x)`);
+          return fn(name + "'".repeat(primes), ...this.parseParenArgs());
+        }
         if (this.fns.has(name) && this.atParenOpen()) return fn(name, ...this.parseParenArgs());
         return sym(name);
       }

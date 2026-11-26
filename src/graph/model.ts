@@ -1,7 +1,7 @@
 // Zerlegt den Eingabetext (eine Zeile = ein Ausdruck) in darstellbare Objekte, Definitionen und Parameter.
 import {
   parse, ParseError, EngineError, UndefinedSymbolError, CONSTANTS, freeSymbols, compile, compileRelation,
-  evalNumber, toLatex, add, mul, NEG1, inlineDefs, type Expr, type DefInfo, type Context,
+  evalNumber, toLatex, add, mul, NEG1, inlineDefs, subst, sym, derivative, mapChildren, simplify, type Expr, type DefInfo, type Context,
 } from "../engine/index.ts";
 import {
   type PlotItem, type ItemKind, explicitItem, parametricItem, polarItem, implicitItem, inequalityItem,
@@ -65,6 +65,21 @@ function paramDefinition(expr: Expr, params: Record<string, number>, defs: Recor
   } catch {
     return null;
   }
+}
+
+/**
+ * Nullstellenmenge von F bei gerader Vielfachheit: u^(2k) hat dieselben Nullstellen wie u, aber keinen Vorzeichenwechsel.
+ * Für implizite Kurven wie (x − y)² = 0 wird deshalb u gezeichnet.
+ */
+function reduceEven(e: Expr): Expr {
+  let s: Expr;
+  try {
+    s = simplify(e);
+  } catch {
+    return e;
+  }
+  const un = (a: Expr): Expr => (a.t === "pow" && a.exp.t === "num" && a.exp.d === 1n && a.exp.n >= 2n && a.exp.n % 2n === 0n ? un(a.base) : a);
+  return s.t === "mul" ? mul(...s.args.map(un)) : un(s);
 }
 
 /** Grenzen einer Variablen aus einer Bedingung wie 0 ≤ t ≤ 2π (nur konstante Grenzen). */
@@ -131,6 +146,30 @@ export function buildModel(src: string, extraParams: Record<string, number> = {}
     if (p && "expr" in p && p.expr.t === "def") defs[p.expr.name] = { params: p.expr.params, body: p.expr.body };
   }
 
+  // Ableitungen f'(x), f''(x) benutzerdefinierter Funktionen: als zusätzliche Definitionen bereitstellen
+  for (let round = 0, changed = true; changed && round < 10; round++) {
+    changed = false;
+    const used = new Set<string>();
+    const walk = (x: Expr): void => {
+      if (x.t === "fn" && x.name.endsWith("'")) used.add(x.name);
+      mapChildren(x, (c) => (walk(c), c));
+    };
+    for (const p of parsed) if (p && "expr" in p) walk(p.expr);
+    for (const d of Object.values(defs)) walk(d.body);
+    for (const nm of used) {
+      if (has(defs, nm)) continue;
+      const base = nm.replace(/'+$/, "");
+      const bd = has(defs, base) ? defs[base] : undefined;
+      if (!bd || bd.params.length !== 1) continue;
+      try {
+        defs[nm] = { params: bd.params, body: derivative(inlineDefs(bd.body, defs), bd.params[0], nm.length - base.length) };
+        changed = true;
+      } catch {
+        /* keine Ableitungsregel: die Zeile meldet „Unbekannte Funktion“ */
+      }
+    }
+  }
+
   // Parameter: Slider-Werte, dann Zeilen wie a=2 in Textreihenfolge (Zeilen gewinnen)
   const params: Record<string, number> = { ...extraParams };
   for (const p of parsed) {
@@ -180,7 +219,9 @@ export function buildModel(src: string, extraParams: Record<string, number> = {}
         const m = missingOf([body], [v]);
         if (m.length) return pending(m);
         const f1 = compile(withCond(body), [v], ctx);
-        items.push(explicitItem(itemBase, (x) => f1(x), { expr: inlineDefs(withCond(body), defs), v, params }));
+        const it = explicitItem(itemBase, (x) => f1(x), { expr: inlineDefs(withCond(body), defs), v, params });
+        it.curve = { F: add(sym("y"), mul(NEG1, subst(inlineDefs(body, defs), { [v]: sym("x") }))), params };
+        items.push(it);
         return plotted("explicit");
       };
 
@@ -189,7 +230,10 @@ export function buildModel(src: string, extraParams: Record<string, number> = {}
         const m = missingOf([expr.body], [expr.params[0]]);
         if (m.length) return pending(m);
         const f1 = compile(expr.body, [expr.params[0]], ctx);
-        items.push(explicitItem(itemBase, (x) => f1(x), { expr: inlineDefs(expr.body, defs), v: expr.params[0], params }));
+        const it = explicitItem(itemBase, (x) => f1(x), { expr: inlineDefs(expr.body, defs), v: expr.params[0], params });
+        const inner = expr.body.t === "restrict" ? expr.body.body : expr.body;
+        it.curve = { F: add(sym("y"), mul(NEG1, subst(inlineDefs(inner, defs), { [expr.params[0]]: sym("x") }))), params };
+        items.push(it);
         return plotted("explicit");
       }
 
@@ -223,9 +267,11 @@ export function buildModel(src: string, extraParams: Record<string, number> = {}
           // implizite Kurve
           const m = missingOf([L, R], ["x", "y"]);
           if (m.length) return pending(m);
-          const h = compile(add(L, mul(NEG1, R)), ["x", "y"], ctx);
+          const h = compile(reduceEven(add(L, mul(NEG1, R))), ["x", "y"], ctx);
           const mask = cond ? compileRelation(cond, ["x", "y"], ctx) : undefined;
-          items.push(implicitItem(itemBase, (x, y) => h(x, y), mask && ((x, y) => mask(x, y))));
+          const imp = implicitItem(itemBase, (x, y) => h(x, y), mask && ((x, y) => mask(x, y)));
+          imp.curve = { F: inlineDefs(add(L, mul(NEG1, R)), defs), params };
+          items.push(imp);
           return plotted("implicit");
         }
 

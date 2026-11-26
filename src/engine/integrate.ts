@@ -9,7 +9,7 @@ import { compile, integrate as integrateNum } from "./eval.ts";
 import { findPoles } from "./roots.ts";
 import {
   type Rat, rat, rAdd, rMul, rDiv, rSub, rNeg, rExpr, rIsZero, polyDivMod, polyDeriv, polyDeg, polyMul, polyIsZero,
-  rationalForm, rationalRoots, solveLinearRat, toPolynomial, polyToExpr,
+  rationalForm, rationalRoots, solveLinearRat, toPolynomial, polyToExpr, sqrtRat,
 } from "./poly.ts";
 
 const dep = (e: Expr, v: string): boolean => freeSymbols(e).has(v);
@@ -73,9 +73,6 @@ function uSub(e: Expr, v: string, depth: number): Expr | null {
 }
 
 // ---------- Partialbruchzerlegung ----------
-function sqrtRat(r: Rat): Expr {
-  return simplify(sMul([rExpr(rat(1n, r.d)), sPow(num(r.n * r.d), num(1, 2))]));
-}
 
 function integRational(P: Rat[], Q: Rat[], v: string): Expr | null {
   const { q, r } = polyDivMod(P, Q);
@@ -90,8 +87,6 @@ function integRational(P: Rat[], Q: Rat[], v: string): Expr | null {
     let quad: Rat[] | null = null;
     let lc = rest[rest.length - 1];
     if (restDeg === 2) {
-      const D = rSub(rMul(rest[1], rest[1]), rMul(rat(4n), rMul(rest[2], rest[0])));
-      if (D.n >= 0n) return null; // reelle irrationale Nullstellen: hier nicht unterstützt
       quad = rest;
     }
     // Faktoren (x − r)^m
@@ -158,18 +153,111 @@ function integRational(P: Rat[], Q: Rat[], v: string): Expr | null {
     if (quad) {
       const [c0, b1, a2] = [quad[0], quad[1], quad[2]];
       const two_a = rMul(rat(2n), a2);
-      if (!rIsZero(qa)) parts.push(sMul([rExpr(rDiv(qa, two_a)), fn("ln", polyToExpr(quad, v))]));
+      const disc = rSub(rMul(rat(4n), rMul(a2, c0)), rMul(b1, b1));
+      // irreduzibel (disc > 0): Q hat festes Vorzeichen; mit reellen Nullstellen braucht ln einen Betrag
+      const lnQ = disc.n > 0n ? fn("ln", polyToExpr(quad, v)) : fn("ln", fn("abs", polyToExpr(quad, v)));
+      if (!rIsZero(qa)) parts.push(sMul([rExpr(rDiv(qa, two_a)), lnQ]));
       const kk = rSub(qb, rDiv(rMul(qa, b1), two_a));
       if (!rIsZero(kk)) {
-        const disc = rSub(rMul(rat(4n), rMul(a2, c0)), rMul(b1, b1)); // > 0
-        const s = sqrtRat(disc);
-        const argExpr = sMul([add(sMul([rExpr(two_a), sym(v)]), rExpr(b1)), sPow(s, NEG1)]);
-        parts.push(sMul([rExpr(kk), num(2), sPow(s, NEG1), fn("arctan", argExpr)]));
+        const lin2 = add(sMul([rExpr(two_a), sym(v)]), rExpr(b1));
+        if (disc.n > 0n) {
+          const s = sqrtRat(disc);
+          parts.push(sMul([rExpr(kk), num(2), sPow(s, NEG1), fn("arctan", sMul([lin2, sPow(s, NEG1)]))]));
+        } else {
+          // zwei irrationale reelle Nullstellen: ∫ 1/R = (1/√D)·ln|(2Av + B − √D)/(2Av + B + √D)|
+          // durch 2A gekürzt: ((v + B/2A) − √D/2A) / ((v + B/2A) + √D/2A)
+          const s = sqrtRat(rNeg(disc));
+          const sh = add(sym(v), rExpr(rDiv(b1, two_a)));
+          const sd = sMul([s, rExpr(rDiv(rat(1n), two_a))]);
+          const ratio = sMul([add(sh, neg(sd)), sPow(add(sh, sd), NEG1)]);
+          void lin2;
+          parts.push(sMul([rExpr(kk), sPow(s, NEG1), fn("ln", fn("abs", ratio))]));
+        }
       }
     }
     lc = lc;
   }
   return sAdd(parts);
+}
+
+// ---------- Potenzen von Winkelfunktionen (Reduktionsformeln) ----------
+type Trig = (n: number, u: Expr, a: Expr, x: Expr) => Expr;
+const sinPow: Trig = (n, u, a, x) =>
+  n === 0 ? x : n === 1 ? div(neg(fn("cos", u)), a)
+  : sAdd([div(neg(mul(pow(fn("sin", u), num(n - 1)), fn("cos", u))), mul(num(n), a)), sMul([num(n - 1, n), sinPow(n - 2, u, a, x)])]);
+const cosPow: Trig = (n, u, a, x) =>
+  n === 0 ? x : n === 1 ? div(fn("sin", u), a)
+  : sAdd([div(mul(pow(fn("cos", u), num(n - 1)), fn("sin", u)), mul(num(n), a)), sMul([num(n - 1, n), cosPow(n - 2, u, a, x)])]);
+const tanPow: Trig = (n, u, a, x) =>
+  n === 0 ? x : n === 1 ? div(neg(LN(fn("cos", u))), a)
+  : sAdd([div(pow(fn("tan", u), num(n - 1)), mul(num(n - 1), a)), neg(tanPow(n - 2, u, a, x))]);
+const secPow: Trig = (n, u, a, x) =>
+  n === 1 ? div(LN(add(pow(fn("cos", u), NEG1), fn("tan", u))), a)
+  : n === 2 ? div(fn("tan", u), a)
+  : sAdd([div(mul(pow(fn("cos", u), num(2 - n)), fn("tan", u)), mul(num(n - 1), a)), sMul([num(n - 2, n - 1), secPow(n - 2, u, a, x)])]);
+const cscPow: Trig = (n, u, a, x) =>
+  n === 1 ? div(fn("ln", fn("abs", fn("tan", div(u, num(2))))), a)
+  : n === 2 ? div(neg(fn("cot", u)), a)
+  : sAdd([div(neg(mul(pow(fn("sin", u), num(2 - n)), fn("cot", u))), mul(num(n - 1), a)), sMul([num(n - 2, n - 1), cscPow(n - 2, u, a, x)])]);
+
+/** ∫ ln^n(u) dv mit u = a·v + b: (1/a)·G_n(u), G_n = u·ln^n u − n·G_{n−1}. */
+function lnPow(n: number, u: Expr): Expr {
+  if (n === 0) return u;
+  return sAdd([mul(u, pow(fn("ln", u), num(n))), neg(sMul([num(n), lnPow(n - 1, u)]))]);
+}
+
+/** Polynom in w (Koeffizienten als Rat) -> ∫ ... dw als Ausdruck in w. */
+function integratePolyIn(coeffs: Rat[], w: Expr): Expr {
+  return sAdd(coeffs.map((c, j) => (rIsZero(c) ? ZERO : sMul([rExpr(rDiv(c, rat(BigInt(j + 1)))), pow(w, num(j + 1))]))));
+}
+
+/** sin^m(u)·cos^n(u) mit ganzzahligen m, n ≥ 0 und linearem u. */
+function sinCosProduct(m: number, n: number, u: Expr, a: Expr, v: string): Expr | null {
+  if (m + n > 14) return null;
+  const W = sym("_w");
+  const polyExpr = (e: Expr): Rat[] | null => toPolynomial(e, "_w");
+  if (m % 2 === 1) {
+    // w = cos u, dw = −a·sin u dv
+    const P = polyExpr(mul(pow(add(ONE, mul(NEG1, pow(W, num(2)))), num((m - 1) / 2)), pow(W, num(n))));
+    if (!P) return null;
+    return subst(div(neg(integratePolyIn(P, W)), a), { _w: fn("cos", u) });
+  }
+  if (n % 2 === 1) {
+    const P = polyExpr(mul(pow(W, num(m)), pow(add(ONE, mul(NEG1, pow(W, num(2)))), num((n - 1) / 2))));
+    if (!P) return null;
+    return subst(div(integratePolyIn(P, W), a), { _w: fn("sin", u) });
+  }
+  // beide gerade: sin² = (1 − c)/2, cos² = (1 + c)/2 mit c = cos 2u
+  const P = polyExpr(mul(pow(mul(num(1, 2), add(ONE, mul(NEG1, W))), num(m / 2)), pow(mul(num(1, 2), add(ONE, W)), num(n / 2))));
+  if (!P) return null;
+  const x = sym(v);
+  const u2 = simplify(mul(num(2), u));
+  const a2 = simplify(mul(num(2), a));
+  return sAdd(P.map((c, j) => (rIsZero(c) ? ZERO : sMul([rExpr(c), cosPow(j, u2, a2, x)]))));
+}
+
+/** √(A v² + B v + C)^(±1) für ein quadratisches Polynom: arcsin-/ln-Formeln nach quadratischer Ergänzung. */
+function sqrtQuadratic(base: Expr, inv: boolean, v: string): Expr | null {
+  const c = toPolynomial(base, v);
+  if (!c || c.length !== 3) return null;
+  const [C, B, A] = [c[0], c[1], c[2]];
+  const h = rDiv(rNeg(B), rMul(rat(2n), A));
+  const k = rSub(C, rDiv(rMul(B, B), rMul(rat(4n), A)));
+  const w = simplify(add(sym(v), rExpr(rNeg(h))));
+  const Q = pow(base, num(1, 2));
+  if (A.n > 0n) {
+    if (k.n === 0n) return null;
+    const sA = sqrtRat(A);
+    const lnPart = fn("ln", fn("abs", add(mul(sA, w), Q)));
+    if (inv) return div(lnPart, sA);
+    return sAdd([sMul([num(1, 2), w, Q]), sMul([rExpr(rDiv(k, rat(2n))), sPow(sA, NEG1), lnPart])]);
+  }
+  if (k.n <= 0n) return null;
+  const sA = sqrtRat(rNeg(A));
+  const sK = sqrtRat(k);
+  const asin = fn("arcsin", sMul([sA, w, sPow(sK, NEG1)]));
+  if (inv) return div(asin, sA);
+  return sAdd([sMul([num(1, 2), w, Q]), sMul([rExpr(rDiv(k, rat(2n))), sPow(sA, NEG1), asin])]);
 }
 
 // ---------- Hauptregeln ----------
@@ -194,6 +282,10 @@ function integFnLinear(name: string, u: Expr, a: Expr): Expr | null {
 
 function integPow(e: Extract<Expr, { t: "pow" }>, v: string): Expr | null {
   if (!dep(e.exp, v)) {
+    if (e.exp.t === "num" && e.exp.d === 2n && (e.exp.n === 1n || e.exp.n === -1n) && !linearIn(e.base, v)) {
+      const r = sqrtQuadratic(e.base, e.exp.n === -1n, v);
+      if (r) return r;
+    }
     const L = linearIn(e.base, v);
     if (L && e.exp.t === "num") {
       if (e.exp.n === -1n && e.exp.d === 1n) return div(LN(e.base), L.a);
@@ -208,6 +300,15 @@ function integPow(e: Extract<Expr, { t: "pow" }>, v: string): Expr | null {
       const a = L2.a;
       const x = sym(v);
       const nm = e.base.name;
+      const k = Number(n < 0n ? -n : n);
+      if (k <= 30) {
+        if (nm === "sin" && n >= 2n) return sinPow(k, u, a, x);
+        if (nm === "cos" && n >= 2n) return cosPow(k, u, a, x);
+        if (nm === "tan" && n >= 2n) return tanPow(k, u, a, x);
+        if (nm === "cos" && n <= -3n) return secPow(k, u, a, x);
+        if (nm === "sin" && n <= -3n) return cscPow(k, u, a, x);
+        if (nm === "ln" && n >= 2n) return div(lnPow(k, u), a);
+      }
       if (nm === "cos" && n === -2n) return div(fn("tan", u), a);
       if (nm === "sin" && n === -2n) return div(neg(fn("cot", u)), a);
       if (nm === "cosh" && n === -2n) return div(fn("tanh", u), a);
@@ -247,6 +348,26 @@ function integMul(e: Extract<Expr, { t: "mul" }>, v: string, depth: number): Exp
     const r = integRational(rf.P, rf.Q, v);
     if (r) return r;
   }
+  // sin^m(u)·cos^n(u) mit gleichem linearem Argument
+  {
+    const split = (g: Expr): { name: string; n: number; u: Expr } | null => {
+      if (g.t === "fn" && (g.name === "sin" || g.name === "cos") && g.args.length === 1) return { name: g.name, n: 1, u: g.args[0] };
+      if (g.t === "pow" && g.exp.t === "num" && g.exp.d === 1n && g.exp.n > 0n && g.exp.n < 20n && g.base.t === "fn" && (g.base.name === "sin" || g.base.name === "cos")) {
+        return { name: g.base.name, n: Number(g.exp.n), u: g.base.args[0] };
+      }
+      return null;
+    };
+    const parts = rest.map(split);
+    if (parts.length === 2 && parts[0] && parts[1] && parts[0].name !== parts[1].name && key(parts[0].u) === key(parts[1].u)) {
+      const L = linearIn(parts[0].u, v);
+      if (L) {
+        const sn = parts[0].name === "sin" ? parts[0] : parts[1];
+        const cs = parts[0].name === "cos" ? parts[0] : parts[1];
+        const r = sinCosProduct(sn.n, cs.n, parts[0].u, L.a, v);
+        if (r) return r;
+      }
+    }
+  }
   // e^{ax+c}·sin/cos(bx+d)
   if (rest.length === 2) {
     const ex = rest.find((g) => isExp(g, v));
@@ -273,7 +394,7 @@ function integMul(e: Extract<Expr, { t: "mul" }>, v: string, depth: number): Exp
       const R = G && integ(simplify(mul(dP, G)), v, depth + 1);
       if (G && R) return sAdd([sMul([P, G]), neg(R)]);
     }
-    if (g.t === "fn" && g.name === "ln" && linearIn(g.args[0], v)) {
+    if (g.t === "fn" && (g.name === "ln" || g.name === "arctan") && g.args.length === 1) {
       const Qp = integ(P, v, depth + 1);
       const dg = deriv(g, v);
       const R = Qp && dg && integ(simplify(mul(Qp, dg)), v, depth + 1);
@@ -362,7 +483,7 @@ export function antiderivative(e: Expr, v: string): Expr | null {
   const S = simplify(F);
   let E = S;
   try {
-    E = expand(S);
+    E = expand(S, false); // Funktionsargumente (z. B. in ln|…|) bleiben unangetastet
   } catch {
     /* zu groß: unexpandiert lassen */
   }

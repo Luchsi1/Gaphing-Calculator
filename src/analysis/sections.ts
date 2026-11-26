@@ -26,7 +26,7 @@ const orderVars = (s: Iterable<string>): string[] =>
 const mult = (m: number): string | undefined => (m === 2 ? "doppelte Lösung" : m === 3 ? "dreifache Lösung" : m > 3 ? `${m}-fache Lösung` : undefined);
 const nameOf = (v: string): string => (v.length > 1 && !v.includes("_") ? `\\${v}` : v);
 
-export function computeSections(src: string): Section[] {
+export function computeSections(src: string, range: [number, number] = [-10, 10]): Section[] {
   const exprs: Expr[] = [];
   for (const l of src.split("\n")) {
     if (!l.trim()) continue;
@@ -48,7 +48,7 @@ export function computeSections(src: string): Section[] {
       const vars = orderVars(new Set(eqs.flatMap((e) => [...freeSymbols(e)])));
       if (vars.length === 0) sec.notes.push("Keine Unbekannten");
       else {
-        const r = solveSystem(eqs.map(F), vars, {}, [-20, 20]);
+        const r = solveSystem(eqs.map(F), vars, {}, range);
         if (r.note) sec.notes.push(r.note);
         if (r.kind === "unsupported" || r.kind === "none" || r.kind === "infinite") {
           if (!r.note) sec.notes.push("Keine eindeutige Lösung");
@@ -76,7 +76,7 @@ export function computeSections(src: string): Section[] {
     }
     const v = [...free][0];
     try {
-      const r = solveEquation(first.args[0], first.args[1], v, {}, [-10, 10]);
+      const r = solveEquation(first.args[0], first.args[1], v, {}, range);
       if (r.all) sec.items.push({ latex: `\\text{jedes } ${nameOf(v)} \\text{ ist Lösung}`, exact: true });
       else if (r.solutions.length === 0) sec.items.push({ latex: "\\text{keine reelle Lösung}", exact: r.exact || r.method !== "numeric" });
       for (const s of r.solutions) {

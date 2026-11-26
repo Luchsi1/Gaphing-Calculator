@@ -7,22 +7,23 @@ const BRACKETED = new Set(["abs", "floor", "ceil", "fact"]);
 const REL_LATEX: Record<string, string> = { "=": "=", "<": "<", ">": ">", "<=": "\\leq", ">=": "\\geq", "!=": "\\neq" };
 const MATRIX_ENV = { p: "pmatrix", b: "bmatrix", v: "vmatrix", "": "matrix" } as const;
 
-export function nameLatex(name: string): string {
+export function nameLatex(name0: string): string {
+  const pm = /^(.*?)('*)$/.exec(name0);
+  const name = pm ? pm[1] : name0;
+  const primes = pm ? pm[2] : ""; // f'(x): Ableitungsstriche bleiben als ' stehen
   const u = name.indexOf("_");
   const base = u > 0 ? name.slice(0, u) : name;
   const sub = u > 0 ? name.slice(u + 1) : "";
   const b = GREEK.has(base) || base === "infty" ? `\\${base}` : base.length > 1 ? `\\mathrm{${base}}` : base;
-  if (!sub) return b;
-  return `${b}_{${GREEK.has(sub) ? `\\${sub}` : sub}}`;
+  if (!sub) return b + primes;
+  return `${b}_{${GREEK.has(sub) ? `\\${sub}` : sub}}${primes}`;
 }
 
 function prec(e: Expr): number {
   switch (e.t) {
     case "add": return 1;
-    case "mul": {
-      const f = e.args[0];
-      return f.t === "num" && f.n < 0n ? 1 : 2;
-    }
+    case "mul":
+      return termSign(e) < 0 ? 1 : 2;
     case "num": return e.n < 0n ? 1 : e.d !== 1n ? 2 : 4;
     case "pow": return 3;
     case "sum": case "prod": case "int": case "diff": case "lim":
@@ -34,8 +35,46 @@ function prec(e: Expr): number {
 
 const paren = (s: string): string => `\\left(${s}\\right)`;
 const wrap = (e: Expr, min: number): string => (prec(e) < min ? paren(toLatex(e)) : toLatex(e));
-const isNeg = (e: Expr): boolean =>
-  (e.t === "num" && e.n < 0n) || (e.t === "mul" && e.args[0].t === "num" && e.args[0].n < 0n);
+
+/** Gesamtvorzeichen eines Produkts über alle Zahlenfaktoren (auch in verschachtelten Produkten). */
+function termSign(e: Expr): 1 | -1 {
+  if (e.t === "num") return e.n < 0n ? -1 : 1;
+  if (e.t === "mul") return e.args.reduce<1 | -1>((s, a) => (a.t === "num" || a.t === "mul" ? ((s * termSign(a)) as 1 | -1) : s), 1);
+  return 1;
+}
+
+/** −e für einen Term mit negativem Gesamtvorzeichen: kehrt genau einen negativen Zahlenfaktor um. */
+function flipNeg(e: Expr): Expr {
+  if (e.t === "num") return num(-e.n, e.d);
+  if (e.t === "mul") {
+    const args = e.args.slice();
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (a.t === "num" && a.n < 0n) {
+        args[i] = num(-a.n, a.d);
+        return { t: "mul", args };
+      }
+      if (a.t === "mul" && termSign(a) < 0) {
+        args[i] = flipNeg(a);
+        return { t: "mul", args };
+      }
+    }
+  }
+  return { t: "mul", args: [NEG1, e] };
+}
+
+const flattenMul = (args: Expr[]): Expr[] => args.flatMap((a) => (a.t === "mul" ? flattenMul(a.args) : [a]));
+
+/** Würde der Ausdruck als Summe ausgegeben (dann braucht er beim Subtrahieren Klammern)? */
+function isSumLike(e: Expr): boolean {
+  if (e.t === "add") return true;
+  if (e.t !== "mul") return false;
+  const f = flattenMul(e.args);
+  const nums = f.filter((a) => a.t === "num") as Extract<Expr, { t: "num" }>[];
+  const rest = f.filter((a) => a.t !== "num");
+  const one = nums.every((n) => n.n === 1n && n.d === 1n);
+  return one && rest.length === 1 && rest[0].t === "add";
+}
 
 interface Piece {
   s: string;
@@ -61,7 +100,7 @@ function printMul(args: Expr[]): string {
   let negative = false;
   const top: Expr[] = [];
   const bot: Expr[] = [];
-  for (const a of args) {
+  for (const a of flattenMul(args)) {
     if (a.t === "num") {
       if (a.n < 0n) {
         negative = !negative;
@@ -81,7 +120,8 @@ function printMul(args: Expr[]): string {
   if (d !== 1n) denPieces.push({ s: d.toString(), isNum: true });
   const botWrapped = bot.length + denPieces.length > 1;
   for (const a of bot) denPieces.push({ s: botWrapped ? wrap(a, 2) : toLatex(a), isNum: false });
-  const numer = joinPieces(numerPieces);
+  let numer = joinPieces(numerPieces);
+  if (negative && !denPieces.length && n === 1n && top.length === 1 && top[0].t === "add") numer = paren(numer);
   const body = denPieces.length ? `\\frac{${numer}}{${joinPieces(denPieces)}}` : numer;
   return negative ? `-${body}` : body;
 }
@@ -131,7 +171,10 @@ export function toLatex(e: Expr): string {
       let s = wrap(e.args[0], 1);
       for (let i = 1; i < e.args.length; i++) {
         const t = e.args[i];
-        s += isNeg(t) ? ` - ${wrap(sMul([NEG1, t]), 2)}` : ` + ${wrap(t, 1)}`;
+        if (termSign(t) < 0) {
+          const pos = flipNeg(t);
+          s += isSumLike(pos) ? ` - ${paren(toLatex(pos))}` : ` - ${wrap(pos, 2)}`;
+        } else s += ` + ${wrap(t, 1)}`;
       }
       return s;
     }

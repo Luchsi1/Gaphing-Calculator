@@ -27,9 +27,16 @@ export interface ItemAnalysis {
   params: Record<string, number>;
 }
 
+/** Kurve als Nullstellenmenge F(x, y) = 0 – Grundlage für Schnittpunkte beliebiger Kurven. */
+export interface ItemCurve {
+  F: Expr;
+  params: Record<string, number>;
+}
+
 export interface PlotItem extends ItemBase {
   kind: ItemKind;
   analysis?: ItemAnalysis;
+  curve?: ItemCurve;
   /** Funktionswert an der Stelle x (nur für explizite Kurven; für Anzeige beim Überfahren). */
   probe?: (x: number) => number;
   draw: (view: View) => Shape[];

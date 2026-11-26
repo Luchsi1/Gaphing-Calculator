@@ -1,10 +1,10 @@
 // Gleichungen und Gleichungssysteme lösen: exakt (Polynome, rationale Funktionen, lineare Systeme), sonst numerisch.
 import {
-  type Expr, ZERO, NEG1, num, add, mul, freeSymbols, subst, numFromString, EngineError,
+  type Expr, ZERO, NEG1, num, sym, add, mul, freeSymbols, subst, numFromString, EngineError,
 } from "./ast.ts";
-import { simplify } from "./simplify.ts";
+import { simplify, expand } from "./simplify.ts";
 import { derivative } from "./diff.ts";
-import { compile, type Context } from "./eval.ts";
+import { compile, evalNumber, type Context } from "./eval.ts";
 import {
   type Rat, rat, rNum, rExpr, rationalForm, solvePolynomial, polyDeg, polyIsZero, solveLinearRat,
 } from "./poly.ts";
@@ -103,7 +103,8 @@ export interface SystemSolution {
   exact: boolean;
 }
 export interface SystemResult {
-  kind: "unique" | "none" | "infinite" | "numeric" | "unsupported";
+  /** unique: lineares System; solved: durch Elimination exakt gelöst; numeric: Newton-Verfahren */
+  kind: "unique" | "none" | "infinite" | "solved" | "numeric" | "unsupported";
   vars: string[];
   solutions: SystemSolution[];
   note?: string;
@@ -131,8 +132,102 @@ function solveDense(A: number[][], b: number[]): number[] | null {
   return x;
 }
 
+/**
+ * Zwei Gleichungen, zwei Unbekannte: Ist eine Gleichung (ggf. nach Addition/Subtraktion beider) in einer Variablen linear,
+ * wird sie aufgelöst und in die andere eingesetzt. Die verbleibende Gleichung in einer Variablen löst solveEquation
+ * (exakt für Polynome). Beispiele: Kreis ∩ Gerade, Kreis ∩ Kreis, Parabel ∩ Gerade.
+ */
+function eliminate(F: Expr[], vars: string[], ctx: Context, ranges: [number, number][], used: boolean): SystemResult | null {
+  const sets: Expr[][] = [
+    [F[0], F[1]],
+    [simplify(add(F[0], mul(NEG1, F[1]))), F[1]],
+    [simplify(add(F[0], F[1])), F[1]],
+  ];
+  const resid = (vals: number[]): number => {
+    let m = 0;
+    for (const f of F) {
+      try {
+        m = Math.max(m, Math.abs(compile(f, vars, ctx)(...vals)));
+      } catch {
+        return Infinity;
+      }
+    }
+    return m;
+  };
+  // eine Linearkombination ist eine von 0 verschiedene Konstante: Widerspruch
+  for (const [A] of sets) {
+    if (A.t === "num" && A.n !== 0n) return { kind: "none", vars, solutions: [], note: "Das System ist widersprüchlich: keine Lösung" };
+  }
+  for (const [A, B] of sets) {
+    for (const [eqA, eqB] of [[A, B], [B, A]]) {
+      for (let j = 0; j < 2; j++) {
+        const vj = vars[j];
+        const vk = vars[1 - j];
+        let c: Expr;
+        try {
+          c = simplify(derivative(eqA, vj));
+        } catch {
+          continue;
+        }
+        if (c.t !== "num" || c.n === 0n) continue;
+        const R = simplify(add(eqA, mul(NEG1, c, sym(vj))));
+        if (freeSymbols(R).has(vj)) continue;
+        const xj = simplify(mul(NEG1, R, num(c.d, c.n))); // vj = −R / c
+        const G = simplify(subst(eqB, { [vj]: xj }));
+        if (!freeSymbols(G).has(vk)) {
+          if (G.t === "num" && G.n !== 0n) return { kind: "none", vars, solutions: [], note: "Das System ist widersprüchlich: keine Lösung" };
+          continue;
+        }
+        let sol;
+        try {
+          sol = solveEquation(G, ZERO, vk, ctx, ranges[1 - j]);
+        } catch {
+          continue;
+        }
+        if (sol.all) continue;
+        const fj = compile(xj, [vk], ctx);
+        const out: SystemSolution[] = [];
+        for (const sv of sol.solutions) {
+          const valK = sv.value;
+          const valJ = fj(valK);
+          if (!Number.isFinite(valJ)) continue;
+          const values = j === 0 ? [valJ, valK] : [valK, valJ];
+          if (resid(values) > 1e-6 * (1 + Math.max(...values.map(Math.abs)))) continue;
+          let eJ: Expr | null = null;
+          if (sv.expr) {
+            try {
+              const cand = expand(subst(xj, { [vk]: sv.expr }));
+              if (Number.isFinite(evalNumber(cand))) eJ = cand;
+            } catch {
+              eJ = null;
+            }
+          }
+          const exprs: (Expr | null)[] = j === 0 ? [eJ, sv.expr] : [sv.expr, eJ];
+          out.push({ values, exprs, exact: !used && sv.expr !== null && eJ !== null });
+        }
+        out.sort((p, q) => p.values[0] - q.values[0] || p.values[1] - q.values[1]);
+        const numericOnly = out.some((o) => !o.exact);
+        return {
+          kind: "solved",
+          vars,
+          solutions: out,
+          note: out.length === 0 ? "Keine reelle Lösung" : numericOnly ? (sol.note ?? "Teils numerische Näherung") : used ? "Parameter wurden durch ihre aktuellen Werte ersetzt (Näherung)" : undefined,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 /** Löst das System F_i = 0 (i = 1..n) in den Variablen vars. */
-export function solveSystem(eqs: Expr[], vars: string[], ctx: Context = {}, range: [number, number] = [-20, 20]): SystemResult {
+export function solveSystem(
+  eqs: Expr[],
+  vars: string[],
+  ctx: Context = {},
+  range: [number, number] | [number, number][] = [-20, 20]
+): SystemResult {
+  /** Suchbereich je Variable (ein Bereich gilt für alle) */
+  const ranges: [number, number][] = vars.map((_, i) => (Array.isArray(range[0]) ? (range as [number, number][])[i] ?? (range as [number, number][])[0] : (range as [number, number])));
   let anyUsed = false;
   const F = eqs.map((e) => {
     const b = bindParams(e, ctx.params ?? {}, vars);
@@ -183,6 +278,10 @@ export function solveSystem(eqs: Expr[], vars: string[], ctx: Context = {}, rang
       note: anyUsed ? "Parameter wurden durch ihre aktuellen Werte ersetzt (Näherung)" : undefined,
     };
   }
+  if (n === 2 && F.length === 2) {
+    const ex = eliminate(F, vars, ctx, ranges, anyUsed);
+    if (ex) return ex;
+  }
   if (F.length !== n || n > 3) return { kind: "unsupported", vars, solutions: [], note: "Nichtlineare Systeme werden nur mit genauso vielen Gleichungen wie Unbekannten (höchstens 3) gelöst" };
 
   // Newton-Verfahren aus einem Startgitter
@@ -218,7 +317,7 @@ export function solveSystem(eqs: Expr[], vars: string[], ctx: Context = {}, rang
       idx[k] = t % per;
       t = Math.floor(t / per);
     }
-    let p = idx.map((i) => range[0] + ((range[1] - range[0]) * (i + 0.5)) / per);
+    let p = idx.map((i, k) => ranges[k][0] + ((ranges[k][1] - ranges[k][0]) * (i + 0.5)) / per);
     let fp = evalF(p);
     if (!fp.every(Number.isFinite)) continue;
     for (let it = 0; it < 60 && norm(fp) > 1e-13; it++) {
@@ -247,7 +346,7 @@ export function solveSystem(eqs: Expr[], vars: string[], ctx: Context = {}, rang
     kind: "numeric",
     vars,
     solutions: found.map((p) => ({ values: p, exprs: p.map(() => null), exact: false })),
-    note: `Numerische Lösung (Newton-Verfahren, Suchbereich [${range[0]}, ${range[1]}]); weitere Lösungen außerhalb sind möglich`,
+    note: `Numerische Lösung (Newton-Verfahren im Suchbereich ${vars.map((v, k) => `${v} ∈ [${Number(ranges[k][0].toPrecision(4))}, ${Number(ranges[k][1].toPrecision(4))}]`).join(", ")}); weitere Lösungen außerhalb sind möglich`,
   };
 }
 

@@ -4,6 +4,7 @@ import {
 } from "./ast.ts";
 import { derivative } from "./diff.ts";
 import { integralNode } from "./integrate.ts";
+import { exactLimit } from "./limits.ts";
 
 type Rat = { n: bigint; d: bigint };
 
@@ -119,9 +120,14 @@ function cmpAdd(a: Expr, b: Expr): number {
   const da = degreeOf(a);
   const db = degreeOf(b);
   if (da !== db) return db - da;
-  const ka = key(a);
-  const kb = key(b);
-  return ka < kb ? -1 : ka > kb ? 1 : 0;
+  // bei gleichem Grad nach dem Term ohne Zahlenfaktor ordnen (a, b, c statt „−a“ hinter „c“)
+  const body = (e: Expr): string => (e.t === "mul" && e.args[0].t === "num" ? key(e.args.length === 2 ? e.args[1] : { t: "mul", args: e.args.slice(1) }) : key(e));
+  const ka = body(a);
+  const kb = body(b);
+  if (ka !== kb) return ka < kb ? -1 : 1;
+  const fa = key(a);
+  const fb = key(b);
+  return fa < fb ? -1 : fa > fb ? 1 : 0;
 }
 function rankMul(e: Expr): [number, string] {
   if (e.t === "pow" && e.base.t === "sym" && e.base.name === "e" && e.exp.t !== "num") return [2, "e" + key(e)];
@@ -155,6 +161,16 @@ export function sAdd(input: Expr[]): Expr {
     if (a.t === "num") {
       c = rAdd(c, a);
       continue;
+    }
+    // Zahl · (Summe) innerhalb einer Summe ausmultiplizieren, damit sich gleiche Terme aufheben: x − (x + 1) = −1
+    if (a.t === "mul") {
+      const nums = a.args.filter((x) => x.t === "num");
+      const rest = a.args.filter((x) => x.t !== "num");
+      if (nums.length >= 1 && rest.length === 1 && rest[0].t === "add") {
+        const k = sMul(nums);
+        for (const t of rest[0].args) stack.push(sMul([k, t]));
+        continue;
+      }
     }
     let coeff: Rat = { n: 1n, d: 1n };
     let rest: Expr = a;
@@ -395,6 +411,10 @@ export function simplify(e: Expr): Expr {
     }
     case "diff":
       return derivative(e.body, e.v, e.order);
+    case "lim": {
+      const node = mapChildren(e, simplify) as Extract<Expr, { t: "lim" }>;
+      return exactLimit(node.body, node.v, node.to, node.dir) ?? node;
+    }
     case "int": {
       const node = mapChildren(e, simplify) as Extract<Expr, { t: "int" }>;
       return integralNode(node) ?? node;
@@ -412,7 +432,7 @@ function sAddTerms(terms: Expr[]): Expr[] {
 }
 
 /** Multipliziert Klammern aus und entwickelt ganzzahlige Potenzen von Summen. */
-export function expand(e0: Expr): Expr {
+export function expand(e0: Expr, intoFunctions = true): Expr {
   const e = simplify(e0);
   const go = (x: Expr): Expr => {
     switch (x.t) {
@@ -443,7 +463,7 @@ export function expand(e0: Expr): Expr {
         return sPow(b, go(x.exp));
       }
       case "fn":
-        return sFn(x.name, x.args.map(go));
+        return intoFunctions ? sFn(x.name, x.args.map(go)) : x;
       default:
         return x;
     }

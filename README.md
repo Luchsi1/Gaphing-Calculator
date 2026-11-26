@@ -44,7 +44,12 @@ Getrennt von der Oberfläche, ohne UI-Abhängigkeiten, ohne `eval`:
 | `simplify.ts` | exakte Vereinfachung (Brüche, Wurzeln, π-Werte, Summen, `expand`) |
 | `diff.ts` | symbolische Ableitung (Ketten-, Produkt-, Potenzregel, Hauptsatz) |
 | `eval.ts` | numerische Auswertung (Closure-Baum), Integration (Gauß–Kronrod), Grenzwerte |
-| `latex.ts` | AST → LaTeX für die Anzeige |
+| `latex.ts` | AST → LaTeX für die Anzeige (muss wieder einlesbar sein) |
+| `poly.ts` | exakte Polynome über ℚ, rationale Funktionen, Nullstellen (rational, quadratisch, kubisch, `x^n=c`, Polynome in `x²`) |
+| `roots.ts` | numerische Suche: Nullstellen, Extrema, Pole, Verhalten im Unendlichen |
+| `integrate.ts` | Stammfunktionen (durch Ableiten gegengeprüft), bestimmte Integrale |
+| `solve.ts` | Gleichungen und Gleichungssysteme (exakt oder numerisch) |
+| `limits.ts` | exakte Grenzwerte (Einsetzen, L'Hôpital, Grade, Pole) |
 
 Tests: `npm test` (laufen auch vor jedem Windows-Build; schlägt ein Test fehl, wird nicht gebaut).
 
@@ -56,8 +61,9 @@ Tests: `npm test` (laufen auch vor jedem Windows-Build; schlägt ein Test fehl, 
 - Im Integral beendet `d` + Variable den Integranden (`\int_0^1 x^2\,dx`).
 - `e`, `\pi`, `\tau`, `\infty` sind Konstanten.
 
-### Noch nicht enthalten (folgt in späteren Schritten)
-Stammfunktionen und symbolische Grenzwerte/Summenformeln, Gleichungslöser, Matrizen- und Vektorrechnung (Matrizen werden bereits geparst und gesetzt), komplexe Zahlen, Ableitungsstrich `f'`, Graph-Renderer, Slider, Geometrie.
+### Noch nicht enthalten
+Geometrie-Arbeitsbereich, komplexe Zahlen, Vektor- und Matrixrechnung (Matrizen werden geparst und gesetzt), Folgen, Speichern/Export von Projekten,
+WYSIWYG-Formeleditor, Undo/Redo. Ausführlicher Stand und Planung: `HANDOVER.md`.
 
 ## Graph (`src/graph`, `GraphView.tsx`)
 
@@ -106,5 +112,11 @@ Schnittpunkte/Nullstellen/Extrema als Markierungen.
 Jedes Ergebnis trägt die Kennzeichnung **exakt** oder **Näherung**. Uneigentliche Integrale (Polstelle im Intervall) werden nie als exakter Wert ausgegeben.
 Die Knöpfe „→ Zeile“ übernehmen ein Ergebnis (Punkt, Asymptote, Tangente, f′, F, Fläche als `A=…`) als neue, frei editierbare Zeile.
 
-Grenzen: Stammfunktionen nur, wenn eine geschlossene Form gefunden wird (nicht z. B. `e^{x^2}`, `\sin(x)/x`, `\sin^3 x`);
-Nullstellen höheren Grades ohne Wurzelausdruck nur numerisch; numerische Suche nur im sichtbaren Bereich bzw. in [−10, 10] (Rechner).
+Weitere Fähigkeiten: Ableitungsstriche `f'(x)`, `f''(x)` für definierte Funktionen; exakte Grenzwerte (`\lim`, Einsetzen, L'Hôpital, Grad bei ±∞, Pole mit Vorzeichen;
+jedes exakte Ergebnis wird numerisch gegengeprüft); kubische Gleichungen (Cardano/trigonometrisch), `x^n=c` und Polynome in `x²` exakt;
+2×2-Systeme per Elimination exakt (Kreis∩Gerade, Kreis∩Kreis, Parabel∩Gerade); Schnittpunkte beliebiger Kurven (explizit/implizit) im Graph;
+implizite Kurven mit gerader Vielfachheit wie `(x-y)^2=0`; einstellbarer Suchbereich im Rechner.
+
+Grenzen: Stammfunktionen nur, wenn eine geschlossene Form gefunden wird (nicht z. B. `e^{x^2}`, `\sin(x)/x`, `\sqrt{\sin x}`);
+Gleichungen ab Grad 5 sowie Quartiken ohne Substitution nur numerisch; numerische Suche nur im sichtbaren Bereich bzw. im eingestellten Rechner-Bereich;
+Analyse nur für explizite Funktionen (Schnittpunkte auch implizit); parametrische/Polarkurven werden nicht analysiert; Punkte wie `x^2+y^2=0` (isolierter Punkt) erscheinen nicht.

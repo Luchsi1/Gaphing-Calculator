@@ -154,7 +154,12 @@ test("Integration: jede Stammfunktion ergibt abgeleitet den Integranden; Unlösb
   const ok = ["x^2", "3x^2+2x+1", "\\frac{1}{x}", "\\sqrt{x}", "e^{2x}", "\\sin(3x)", "\\tan(x)", "\\ln(x)", "x e^x", "x^2e^x", "x\\sin(x)",
     "e^x\\sin(x)", "x\\ln(x)", "\\frac{x}{x^2+1}", "x e^{x^2}", "\\frac{1}{x\\ln(x)}", "\\frac{1}{x^2-1}", "\\frac{1}{x^2+1}",
     "\\frac{1}{x^2+2x+5}", "\\frac{x+2}{x^2+1}", "\\frac{x^2}{x+1}", "\\frac{1}{x(x+1)^2}", "\\frac{2x+3}{x^2-x-6}", "\\arctan(x)",
-    "\\sin^2(x)", "\\frac{1}{\\cos^2(x)}", "2^x", "|x|", "\\sqrt{2x+1}", "(2x+1)^5", "\\sin(x)\\cos(x)", "\\frac{\\ln(x)}{x}"];
+    "\\sin^2(x)", "\\frac{1}{\\cos^2(x)}", "2^x", "|x|", "\\sqrt{2x+1}", "(2x+1)^5", "\\sin(x)\\cos(x)", "\\frac{\\ln(x)}{x}",
+    // Erweiterungen: Potenzen und Produkte von Winkelfunktionen, Wurzeln aus Quadratischem, irrationale Partialbrüche
+    "\\sin^3(x)", "\\cos^4(x)", "\\sin^5(x)", "\\tan^3(x)", "\\frac{1}{\\cos^3(x)}", "\\frac{1}{\\sin^3(x)}", "\\sin^2(x)\\cos^2(x)",
+    "\\sin^3(x)\\cos^2(x)", "\\sin(x)\\cos^3(x)", "\\cos^2(3x)", "\\ln^2(x)", "\\ln^3(x)", "x\\arctan(x)", "x\\ln(x^2+1)",
+    "\\sqrt{1-x^2}", "\\frac{1}{\\sqrt{1-x^2}}", "\\frac{1}{\\sqrt{x^2+1}}", "\\sqrt{x^2+1}", "\\sqrt{4-x^2}", "\\frac{1}{\\sqrt{x^2-4}}",
+    "\\frac{1}{\\sqrt{2x-x^2}}", "\\frac{1}{x^2-2}", "\\frac{1}{x^2+x-1}", "\\frac{x+1}{x^2-2x-1}"];
   for (const s of ok) {
     const e = parse(s);
     const Fx = antiderivative(e, "x");
@@ -162,13 +167,15 @@ test("Integration: jede Stammfunktion ergibt abgeleitet den Integranden; Unlösb
     const dF = compile(derivative(Fx!, "x"), ["x"]);
     const f = compile(e, ["x"]);
     let n = 0;
-    for (const x of [0.37, 1.13, 2.71, 4.2]) {
+    for (const x of [-0.5, 0.2, 0.37, 0.8, 1.13, 2.71, 4.2]) {
       const a = dF(x), b = f(x);
       if (Number.isFinite(a) && Number.isFinite(b)) { near(a, b, 1e-7); n++; }
     }
     assert.ok(n >= 2, s);
   }
-  for (const s of ["e^{x^2}", "\\frac{\\sin(x)}{x}", "\\sin^3(x)", "\\sqrt{1-x^2}"]) assert.equal(antiderivative(parse(s), "x"), null, s);
+  for (const s of ["e^{x^2}", "\\frac{\\sin(x)}{x}", "\\sqrt{\\sin(x)}", "\\frac{1}{\\ln(x)}"]) assert.equal(antiderivative(parse(s), "x"), null, s);
+  assert.ok(toLatex(antiderivative(parse("\\frac{1}{x^2-2}"), "x")!).includes("\\left|\\frac{x - \\sqrt{2}}{x + \\sqrt{2}}\\right|"));
+  assert.ok(toLatex(antiderivative(parse("\\frac{x+1}{x^2-2x-1}"), "x")!).includes("\\ln\\left(\\left|x^{2} - 2x - 1\\right|\\right)")); // mit Betrag
   assert.equal(toLatex(antiderivative(parse("x^2e^x"), "x")!), "x^{2}e^{x} - 2xe^{x} + 2e^{x}");
   assert.equal(toLatex(simplify(parse("\\int_0^1 x^2\\,dx"))), "\\frac{1}{3}");
   assert.equal(toLatex(simplify(parse("\\int \\cos(x)\\,dx"))), "\\sin\\left(x\\right)");

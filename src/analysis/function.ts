@@ -3,7 +3,7 @@
 import {
   type Expr, ZERO, NEG1, num, sym, add, mul, subst, simplify, expand, derivative, compile, toLatex, evalNumber,
   rationalForm, solvePolynomial, bindParams, solveEquation, definiteIntegral, scanRoots, scanExtrema, findPoles,
-  endBehavior, recognize, rationalOf, sAdd, exactRoot,
+  endBehavior, recognize, rationalOf, sAdd, exactRoot, solveSystem,
 } from "../engine/index.ts";
 import {
   type Rat, rat, rNum, rExpr, polyMul, polyDeriv, polySub, polyDeg, polyDivMod, polyEvalNum, polyToExpr, polyIsZero, rDiv,
@@ -91,7 +91,8 @@ export function analyzeFunction(expr: Expr, v: string, params: Record<string, nu
   const bound = bindParams(expr, params, [v]);
   const labelExact = !bound.used;
   const g = simplify(bound.expr);
-  const f0 = compile(g, [v]);
+  // Numerische Suche am ungekürzten Ausdruck: Vereinfachen darf den Definitionsbereich nicht erweitern (z. B. (√x)² → x)
+  const f0 = compile(bound.expr, [v]);
   const f = (x: number): number => f0(x);
   const out: FunctionAnalysis = {
     exact: false, method: "numeric", yIntercept: null, roots: [], minima: [], maxima: [], inflections: [],
@@ -262,7 +263,7 @@ export function intersections(e1: Expr, e2: Expr, v: string, params: Record<stri
   const r = solveEquation(e1, e2, v, { params }, range);
   const b = bindParams(e1, params, [v]);
   const g = simplify(b.expr);
-  const f = compile(g, [v]);
+  const f = compile(b.expr, [v]);
   const rf = g.t === "restrict" ? null : rationalForm(g, v);
   const points = r.solutions.map((s) => {
     const y = f(s.value);
@@ -270,6 +271,20 @@ export function intersections(e1: Expr, e2: Expr, v: string, params: Record<stri
     return mkPt(s.value, y, s.expr, yExpr, !b.used, s.expr ? null : recognize(s.value));
   });
   return { points, all: r.all, exact: r.exact && !b.used, note: r.note };
+}
+
+/** Schnittpunkte zweier Kurven F₁(x,y)=0 und F₂(x,y)=0 (explizit, implizit): exakt, wenn Elimination möglich, sonst numerisch. */
+export function intersectCurves(
+  F1: Expr,
+  F2: Expr,
+  params: Record<string, number>,
+  xr: [number, number],
+  yr: [number, number]
+): { points: Pt[]; all: boolean; note?: string; exact: boolean } {
+  const r = solveSystem([F1, F2], ["x", "y"], { params }, [xr, yr]);
+  const points = r.solutions.map((s) => mkPt(s.values[0], s.values[1], s.exprs[0], s.exprs[1], s.exact, s.exprs[0] ? null : recognize(s.values[0])));
+  const note = r.kind === "none" ? "Die Kurven schneiden sich nicht." : r.kind === "unsupported" ? r.note : r.note;
+  return { points, all: false, note, exact: points.length > 0 && points.every((p) => p.exact) };
 }
 
 // ---------- Tangente und Normale ----------
@@ -291,7 +306,7 @@ export function tangentNormal(expr: Expr, v: string, params: Record<string, numb
   const x0s = simplify(x0);
   const xv = evalNumber(x0s, params);
   const rf = g.t === "restrict" ? null : rationalForm(g, v);
-  const f = compile(g, [v]);
+  const f = compile(b.expr, [v]);
   const yv = f(xv);
   if (!Number.isFinite(yv)) throw new Error("Die Funktion ist an dieser Stelle nicht definiert");
   const y0 = exactValue(g, v, x0s, rf);

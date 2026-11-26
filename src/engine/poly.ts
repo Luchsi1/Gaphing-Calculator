@@ -1,5 +1,5 @@
 // Exakte Polynome mit rationalen Koeffizienten: Zerlegung, Division, Nullstellen, rationale Funktionen.
-import { type Expr, type NumE, ZERO, ONE, NEG1, num, sym, add, mul, pow, EngineError } from "./ast.ts";
+import { type Expr, type NumE, ZERO, ONE, NEG1, num, sym, add, mul, pow, fn, EngineError } from "./ast.ts";
 import { simplify, expand, sMul, sAdd, sPow } from "./simplify.ts";
 import { evalNumber } from "./eval.ts";
 
@@ -254,6 +254,11 @@ export function realRootsNumeric(c0: number[]): number[] {
   return roots.filter((x, i) => i === 0 || Math.abs(x - roots[i - 1]) > 1e-9 * (1 + Math.abs(x)));
 }
 
+/** √r für eine rationale Zahl r > 0 als vereinfachter Ausdruck (z. B. √(8/9) = 2√2/3). */
+export function sqrtRat(r: Rat): Expr {
+  return simplify(sMul([rExpr(rat(1n, r.d)), sPow(num(r.n * r.d), num(1, 2))]));
+}
+
 export interface RealRoot {
   value: number;
   /** exakter Ausdruck, falls bestimmbar (rational oder Wurzelausdruck), sonst null */
@@ -261,7 +266,88 @@ export interface RealRoot {
   mult: number;
 }
 
-/** Reelle Nullstellen eines Polynoms: rational und quadratisch exakt, Rest numerisch. */
+function rootOf(e: Expr, mult = 1): RealRoot | null {
+  try {
+    const v = evalNumber(e);
+    return Number.isFinite(v) ? { value: v, expr: e, mult } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Kubische Gleichung ohne rationale Nullstelle: Cardano (eine reelle Wurzel) bzw. trigonometrische Form (drei reelle Wurzeln). */
+function solveCubic(c: Rat[]): RealRoot[] {
+  const [d, cc, b, a] = [c[0], c[1], c[2], c[3]];
+  const three = rat(3n);
+  const p = rDiv(rSub(rMul(three, rMul(a, cc)), rMul(b, b)), rMul(three, rMul(a, a)));
+  const q = rDiv(
+    rAdd(rSub(rMul(rat(2n), rMul(b, rMul(b, b))), rMul(rat(9n), rMul(a, rMul(b, cc)))), rMul(rat(27n), rMul(rMul(a, a), d))),
+    rMul(rat(27n), rMul(a, rMul(a, a)))
+  );
+  const shift = rExpr(rNeg(rDiv(b, rMul(three, a)))); // x = t − b/(3a)
+  const disc = rAdd(rDiv(rMul(q, q), rat(4n)), rDiv(rMul(p, rMul(p, p)), rat(27n))); // q²/4 + p³/27
+  const out: RealRoot[] = [];
+  if (disc.n > 0n) {
+    const sd = sqrtRat(disc);
+    const half = rExpr(rNeg(rDiv(q, rat(2n))));
+    const u = add(half, sd);
+    const w = add(half, sMul([NEG1, sd]));
+    const r = rootOf(expand(add(pow(u, num(1, 3)), pow(w, num(1, 3)), shift)));
+    if (r) out.push(r);
+  } else if (disc.n < 0n) {
+    const m = sMul([num(2), sqrtRat(rDiv(rNeg(p), three))]);
+    const arg = sMul([rExpr(rDiv(rMul(three, q), rMul(rat(2n), p))), sqrtRat(rDiv(rNeg(three), p))]);
+    for (let k = 0; k < 3; k++) {
+      const angle = add(sMul([num(1, 3), fn("arccos", arg)]), sMul([num(-2 * k, 3), sym("pi")]));
+      const r = rootOf(add(sMul([m, fn("cos", angle)]), shift));
+      if (r) out.push(r);
+    }
+  }
+  return out;
+}
+
+/** Höhere Grade ohne rationale Nullstelle: x^n = c (n-te Wurzel) und Polynome in x² (Substitution y = x²). */
+function solveHigher(c: Rat[]): RealRoot[] | null {
+  const n = c.length - 1;
+  const lead = c[n];
+  const middleZero = c.slice(1, n).every(rIsZero);
+  if (middleZero) {
+    const r = rDiv(rNeg(c[0]), lead); // x^n = r
+    const sgn = r.n < 0n ? -1 : 1;
+    const mag = rExpr(sgn < 0 ? rNeg(r) : r);
+    if (n % 2 === 0) {
+      if (sgn < 0) return [];
+      const base = simplify(pow(mag, num(1, n)));
+      return [rootOf(simplify(sMul([NEG1, base])))!, rootOf(base)!].filter(Boolean).sort((p, q) => p.value - q.value);
+    }
+    const root = simplify(sMul([num(sgn), pow(mag, num(1, n))]));
+    const rr = rootOf(root);
+    return rr ? [rr] : null;
+  }
+  const oddZero = c.every((k, i) => i % 2 === 0 || rIsZero(k));
+  if (oddZero && n >= 4) {
+    const red = c.filter((_, i) => i % 2 === 0); // Koeffizienten in y = x²
+    const ys = solvePolynomial(red).roots;
+    const out: RealRoot[] = [];
+    for (const y of ys) {
+      if (y.value <= 0) continue;
+      if (y.expr) {
+        const sq = simplify(pow(y.expr, num(1, 2)));
+        for (const e of [sq, simplify(sMul([NEG1, sq]))]) {
+          const r = rootOf(e, y.mult);
+          if (r) out.push(r);
+        }
+      } else {
+        const sv = Math.sqrt(y.value);
+        out.push({ value: -sv, expr: null, mult: y.mult }, { value: sv, expr: null, mult: y.mult });
+      }
+    }
+    return out;
+  }
+  return null;
+}
+
+/** Reelle Nullstellen eines Polynoms: rational, quadratisch, kubisch (Cardano), x^n = c und Polynome in x² exakt, Rest numerisch. */
 export function solvePolynomial(coeffs: Rat[]): { all: boolean; roots: RealRoot[] } {
   const c = polyTrim(coeffs);
   if (c.length === 1) return { all: rIsZero(c[0]), roots: [] };
@@ -283,8 +369,14 @@ export function solvePolynomial(coeffs: Rat[]): { all: boolean; roots: RealRoot[
         out.push({ value: evalNumber(e), expr: e, mult: 1 });
       }
     }
-  } else if (rest.length > 3) {
-    for (const x of realRootsNumeric(rest.map(rNum))) out.push({ value: x, expr: null, mult: 1 });
+  } else if (rest.length === 4) {
+    const cub = solveCubic(rest);
+    if (cub.length) out.push(...cub);
+    else for (const x of realRootsNumeric(rest.map(rNum))) out.push({ value: x, expr: null, mult: 1 });
+  } else if (rest.length > 4) {
+    const hi = solveHigher(rest);
+    if (hi) out.push(...hi);
+    else for (const x of realRootsNumeric(rest.map(rNum))) out.push({ value: x, expr: null, mult: 1 });
   }
   out.sort((p, q) => p.value - q.value);
   return { all: false, roots: out };
