@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import Tex from "./Tex.tsx";
 import GraphWorkspace from "./GraphWorkspace.tsx";
 import CalcView from "./CalcView.tsx";
+import GeometryView from "./GeometryView.tsx";
 import SliderRow from "./SliderRow.tsx";
 import { buildModel } from "./graph/model.ts";
 import { type Slider, createSlider, stepSlider, sliderParams } from "./graph/sliders.ts";
+import { type History, initHistory } from "./geometry/history.ts";
 
 const START = [
   String.raw`f(x)=x^3-3x`,
@@ -17,7 +19,9 @@ const START = [
 
 export default function App() {
   const [src, setSrc] = useState<string>(START);
-  const [tab, setTab] = useState<"graph" | "calc">("graph");
+  const [tab, setTab] = useState<"graph" | "calc" | "geo">("graph");
+  // Geometrie-Konstruktion samt Verlauf liegt hier, damit sie beim Reiterwechsel erhalten bleibt
+  const [geo, setGeo] = useState<History>(() => initHistory());
   const [sliders, setSliders] = useState<Slider[]>([]);
   const params = useMemo(() => sliderParams(sliders), [sliders]);
   const model = useMemo(() => buildModel(src, params), [src, params]);
@@ -48,6 +52,7 @@ export default function App() {
 
   return (
     <div className="app">
+      {tab !== "geo" && (
       <aside className="panel">
         <h1>Ausdrücke (LaTeX, eine pro Zeile)</h1>
         <textarea value={src} onChange={(e: { target: { value: string } }) => setSrc(e.target.value)} spellCheck={false} />
@@ -90,12 +95,20 @@ export default function App() {
           ))}
         </div>
       </aside>
+      )}
       <main className="main">
         <div className="tabs">
           <button className={tab === "graph" ? "on" : ""} onClick={() => setTab("graph")}>Graph</button>
           <button className={tab === "calc" ? "on" : ""} onClick={() => setTab("calc")}>Rechner</button>
+          <button className={tab === "geo" ? "on" : ""} onClick={() => setTab("geo")}>Geometrie</button>
         </div>
-        {tab === "graph" ? <GraphWorkspace items={model.items} lines={model.lines} onAddLine={addLine} /> : <CalcView src={src} />}
+        {tab === "graph" ? (
+          <GraphWorkspace items={model.items} lines={model.lines} onAddLine={addLine} />
+        ) : tab === "calc" ? (
+          <CalcView src={src} />
+        ) : (
+          <GeometryView history={geo} setHistory={setGeo} />
+        )}
       </main>
     </div>
   );

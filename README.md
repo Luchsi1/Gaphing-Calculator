@@ -1,7 +1,7 @@
 # Mathe App (Tauri 2 + React + TypeScript)
 
 Stand: Build-Gerüst. Es enthält eine LaTeX-Eingabe mit KaTeX-Rendering (offline) und die komplette Build-Pipeline für Windows.
-Parser, AST, Rechenengine, Graph und Geometrie folgen als eigene Module.
+Parser, AST, Rechenengine, Graph und Geometrie sind eigene Module.
 
 ## Windows-.exe ohne lokale Entwicklungsumgebung bauen (GitHub Actions)
 
@@ -61,9 +61,18 @@ Tests: `npm test` (laufen auch vor jedem Windows-Build; schlägt ein Test fehl, 
 - Im Integral beendet `d` + Variable den Integranden (`\int_0^1 x^2\,dx`).
 - `e`, `\pi`, `\tau`, `\infty` sind Konstanten.
 
+## Geometrie (`src/geometry`, `GeometryView.tsx`)
+Reiter „Geometrie“: dynamische Konstruktionen wie in GeoGebra. Freie Punkte lassen sich mit „Bewegen“ ziehen; alle davon abhängigen Objekte folgen.
+
+- **Zeichnen**: Punkt, Gerade, Strecke, Strahl, Vektor, Kreis (Mittelpunkt + Punkt oder Radius), Bogen, Polygon.
+- **Konstruieren**: Mittelpunkt, Schnittpunkt (Gerade/Strecke/Strahl/Kreis/Bogen, mehrfach → Index), Senkrechte, Parallele, Mittelsenkrechte, Winkelhalbierende.
+- **Messen**: Abstand, Winkel, Fläche, Umfang – mit LaTeX-Ausgabe und, wo beweisbar, **exaktem Wert** (z. B. `2\sqrt{2}`, `8\pi`, `90^\circ`); sonst `\approx`.
+- Klick auf leere Fläche legt Punkte an (Raster-Fang erzeugt exakte Koordinaten). Strg+Z / Strg+Y, Entf löscht (samt abhängigen Objekten), Esc bricht ab.
+- Objektliste rechts: Gleichungen und Koordinaten als LaTeX, Ein-/Ausblenden, Löschen.
+
 ### Noch nicht enthalten
-Geometrie-Arbeitsbereich, komplexe Zahlen, Vektor- und Matrixrechnung (Matrizen werden geparst und gesetzt), Folgen, Speichern/Export von Projekten,
-WYSIWYG-Formeleditor, Undo/Redo. Ausführlicher Stand und Planung: `HANDOVER.md`.
+Transformationen/Tangenten/Ortslinien in der Geometrie, komplexe Zahlen, Vektor- und Matrixrechnung (Matrizen werden geparst und gesetzt), Folgen, Speichern/Export von Projekten,
+WYSIWYG-Formeleditor, Undo/Redo für Ausdrücke. Ausführlicher Stand und Planung: `HANDOVER.md`.
 
 ## Graph (`src/graph`, `GraphView.tsx`)
 

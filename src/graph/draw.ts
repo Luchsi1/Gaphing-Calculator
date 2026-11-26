@@ -142,6 +142,8 @@ import type { Shape } from "./items.ts";
 export interface DrawnItem {
   color: string;
   shapes: Shape[];
+  /** Linienbreite in Pixeln (Standard 2,5) */
+  width?: number;
 }
 
 /** Zeichnet erst alle Füllungen (halbtransparent), dann Linien, dann Punkte. */
@@ -177,6 +179,7 @@ export function drawItems(ctx: CanvasRenderingContext2D, v: View, items: DrawnIt
   ctx.lineCap = "round";
   for (const it of items) {
     ctx.strokeStyle = it.color;
+    ctx.lineWidth = it.width ?? 2.5;
     for (const s of it.shapes) {
       if (s.type !== "lines") continue;
       ctx.setLineDash(s.dashed ? [8, 6] : []);
