@@ -1,7 +1,7 @@
 # Übergabedokument – Mathe-App (Desmos × GeoGebra als Windows-Desktop-App)
 
 Stand: Ende der Entwicklungssitzung „Geometrie-Arbeitsbereich“ (davor: „Fehlersuche und Grenzen verbessern“). Dieses Dokument ersetzt das Gesprächsprotokoll.
-Es beschreibt den **tatsächlichen** Zustand des Projekts (86 Tests grün, Typcheck sauber). Wo etwas nicht verifiziert ist, steht es ausdrücklich dabei.
+Es beschreibt den **tatsächlichen** Zustand des Projekts (88 Tests grün, Typcheck sauber). Wo etwas nicht verifiziert ist, steht es ausdrücklich dabei.
 
 ---
 
@@ -45,7 +45,7 @@ Engine (rein)        src/engine/   (ast, lexer, parser, simplify, diff, eval, la
 | `vite.config.ts`, `index.html` | Vite, Port 1420 strikt; `lang="de"`. |
 | `app-icon.png` | 1024×1024-Quelle; CI erzeugt daraus `src-tauri/icons/*` (`npm run tauri icon app-icon.png`). |
 | `.github/workflows/build-windows.yml` | `windows-latest`, Node 22, Rust stable, `npm install` → **`npm test`** → Icons → `npm run tauri build` → Artefakte `installer-nsis`, `installer-msi`, `portable-exe` (= `src-tauri/target/release/mathe-app.exe`). Trigger: Push auf `main` + manuell. |
-| `src-tauri/tauri.conf.json` | Produktname „Mathe App“, Identifier `de.example.matheapp`, Fenster 1280×800, Ziele `nsis` + `msi`, `webviewInstallMode: offlineInstaller` (offline-tauglich), `csp: null`. |
+| `src-tauri/tauri.conf.json` | Produktname „Mathe App“, Identifier `de.example.matheapp`, Fenster 1280×800, Ziel `nsis` (MSI auf Wunsch des Nutzers entfernt; Artefakte: `installer-nsis`, `portable-exe`), `webviewInstallMode: offlineInstaller` (offline-tauglich), `csp: null`. |
 | `src-tauri/Cargo.toml`, `build.rs`, `src/main.rs`, `src/lib.rs`, `capabilities/default.json` | Minimales Tauri-2-Gerüst (Lib `mathe_app_lib`, Binary `mathe-app`, Release-Profil mit LTO). **Keine eigenen Rust-Befehle.** |
 | `README.md` | Nutzeranleitung (GitHub-Weg, Eingabekonventionen, Graph, Analyse); am Ende der Sitzung aktualisiert |
 | `HANDOVER.md` | dieses Dokument |
@@ -99,18 +99,19 @@ Engine (rein)        src/engine/   (ast, lexer, parser, simplify, diff, eval, la
 | Datei | Zweck |
 |---|---|
 | `main.tsx` | Einstieg, importiert KaTeX-CSS und `styles.css` |
-| `App.tsx` | Zustand `src` (Textarea), `tab` (graph/calc/geo), `sliders`, `geo` (Geometrie-Verlauf; bleibt beim Reiterwechsel erhalten; linkes Ausdruckspanel ist im Geometrie-Reiter ausgeblendet); `buildModel`; Liste der Zeilen mit LaTeX-Vorschau/Fehlern; Slider-Animation (`requestAnimationFrame`); `addLine` für „→ Zeile“ |
+| `App.tsx` | Zustand `src` (Textarea), `tab` (graph/calc), `sliders`, `geo` (Geometrie-Verlauf), `geoSel` (Auswahl), `geoVals` (Auswertung) – als `GeoBinding` an `GraphWorkspace` → `GraphView` gereicht; `GeoList` steht im linken Panel; Slider-Animation; |
 | `GraphWorkspace.tsx` | Graph + klappbares Analysepanel; Auswahl Funktion/zweite Kurve; Overlay-Items; Hover-Marker; Tangente, Schnittpunkte, Integral/Fläche |
 | `GraphView.tsx` | Canvas, Ansicht (`View`) als State, native Pointer-/Wheel-/Tastatur-Listener, `ResizeObserver`, DPR, Werkzeugleiste (Bereich, log, Raster, 1:1), Statuszeile, Klick-Auswahl |
-| `GeometryView.tsx` | Geometrie-Reiter: Werkzeugleiste (Zeichnen/Konstruieren/Messen), Canvas mit eigener `View` (immer linear, 1:1 beim Start), native Pointer-Listener (Ziehen freier Punkte, Verschieben der Ansicht, Klick = Werkzeug), Raster-Fang (Schrittweite aus dem Zoom), Gummiband, Objektliste mit LaTeX (Ein-/Ausblenden, Löschen), Tastatur (Strg+Z/Y, Entf, Esc, + − Pfeile 0) |
+| `GeoList.tsx` | Liste der Geometrie-Objekte im linken Panel (LaTeX-Koordinaten/-Gleichungen/-Maße, Auswahl, Ein-/Ausblenden, Löschen, „Beispiel laden“) |
+| (Geometrie in `GraphView.tsx`) | Die Geometrie wird **im Graphen** gezeichnet und bedient (gleiche `View`, gleiche Achsen): Werkzeugleisten (Zeichnen/Konstruieren/Messen, Rückgängig/Wiederholen, Magnet, Beschriftung, Radius), Pointer-Logik (Bewegen: freien Punkt ziehen, sonst Ansicht verschieben; andere Werkzeuge: Klick = `applyPick`; ein laufender Analyse-Pick hat nur im Werkzeug „Bewegen“ Vorrang), Geometrie wird nach den Funktionsgraphen gezeichnet; bei logarithmischen Achsen ist sie aus (Hinweis in der Werkzeugleiste). Tastatur zusätzlich: Strg+Z/Y, Entf, Esc. Doppelklick setzt die Ansicht nur im Werkzeug „Bewegen“ zurück |
 | `CalcView.tsx` | Rechner-Reiter: exakt vereinfacht, Näherung, Ableitung, + `SolveSections`; Suchbereich einstellbar |
 | `SolveSections.tsx` | Darstellung von `computeSections` |
 | `SliderRow.tsx` | ein Slider (Bereich, Schritt, Modus, Geschwindigkeit, ▶/⏸) |
 | `Tex.tsx` | KaTeX-Wrapper (`inline` oder Block) |
 | `styles.css` | Hell/Dunkel per `prefers-color-scheme` |
 
-### `tests/` (86 Tests, alle grün)
-`engine.test.ts` (14: Parser, Präzedenz, exakte Arithmetik, Ableitung, Integrale, Definitionsbereich …), `graph.test.ts` (11: Viewport, Raster, Sampler, Zeichnen mit Mock-Kontext, Leistung), `curves.test.ts` (11: Modell-Klassifikation, implizit, Ungleichungen, parametrisch, polar, Slider), `analysis.test.ts` (13: Polynome, Suche, Analyse, Schnittpunkte, Systeme, Integration, Tangente, Fläche, Rechner-Abschnitte, Overlays), `improve.test.ts` (9: Grenzwerte, kubische Wurzeln, Systeme per Elimination, Ableitungsstriche, Druck-Regression, seeded Zufallstest, Rechnerbereich), `geometry.test.ts` (26: Modell/Validierung, Löschen mit Abhängigen, Verschieben, Invarianten per Zufall – Mittelsenkrechte, Lot, Parallele, Winkelhalbierende, Winkelsumme im Dreieck –, Schnittpunkte aller Kombinationen inkl. Tangente/Bereich/Index, exakte Messungen, Werkzeuge, Zeichnen/Treffer, riesige Kreise, Zufallskonstruktionen mit Verschieben und Löschen), `geometry-history.test.ts` (2: Verlauf, Umkreis-Invariante beim Ziehen).
+### `tests/` (88 Tests, alle grün)
+`engine.test.ts` (14: Parser, Präzedenz, exakte Arithmetik, Ableitung, Integrale, Definitionsbereich …), `graph.test.ts` (11: Viewport, Raster, Sampler, Zeichnen mit Mock-Kontext, Leistung), `curves.test.ts` (11: Modell-Klassifikation, implizit, Ungleichungen, parametrisch, polar, Slider), `analysis.test.ts` (13: Polynome, Suche, Analyse, Schnittpunkte, Systeme, Integration, Tangente, Fläche, Rechner-Abschnitte, Overlays), `improve.test.ts` (9: Grenzwerte, kubische Wurzeln, Systeme per Elimination, Ableitungsstriche, Druck-Regression, seeded Zufallstest, Rechnerbereich), `geometry.test.ts` (26: Modell/Validierung, Löschen mit Abhängigen, Verschieben, Invarianten per Zufall – Mittelsenkrechte, Lot, Parallele, Winkelhalbierende, Winkelsumme im Dreieck –, Schnittpunkte aller Kombinationen inkl. Tangente/Bereich/Index, exakte Messungen, Werkzeuge, Zeichnen/Treffer, riesige Kreise, Zufallskonstruktionen mit Verschieben und Löschen), `geometry-history.test.ts` (2: Verlauf, Umkreis-Invariante beim Ziehen), `geometry-snap.test.ts` (2: sanfter Magnet, freie Bewegung feiner als ein Pixel, Koordinaten bleiben exakt dezimal).
 
 ---
 
@@ -194,10 +195,11 @@ Kanonische Formen: Negation `mul(-1,x)`, Differenz = Summe, Division `pow(x,-1)`
 ## 5. Änderungen der letzten Sitzungen
 
 ### 5a. Sitzung „Geometrie-Arbeitsbereich“ (neu)
-- **Neu**: `src/geometry/` (siehe Abschnitt 2), `GeometryView.tsx`, Reiter „Geometrie“ in `App.tsx`, Styles am Ende von `styles.css`; `DrawnItem.width` in `draw.ts` (Auswahl-Halo).
+- **Neu**: `src/geometry/` (siehe Abschnitt 2), `GeoList.tsx`, geometrische Ebene und Werkzeugleisten in `GraphView.tsx` (zunächst als eigener Reiter, auf Wunsch des Nutzers danach in den Graphen integriert – es gibt **keinen** Geometrie-Reiter mehr), Styles am Ende von `styles.css`; `DrawnItem.width` in `draw.ts` (Auswahl-Halo).
 - **Mathematische Festlegungen**: Objekte referenzieren nur frühere Objekte (DAG per Reihenfolge). Schnittpunkt-Index: Gerade×Kreis nach wachsendem Parameter entlang der Geraden; Kreis×Kreis: Index 0 liegt links der Richtung Mittelpunkt₁→Mittelpunkt₂. Gibt es den Platz nicht (Tangente → nur Index 0; außerhalb von Strecke/Strahl/Bogen), ist der Punkt „nicht definiert“ und erholt sich, sobald er wieder existiert. Winkel = ungerichteter Winkel 0°…180° zwischen den Schenkeln; die Markierung nimmt den kleineren Drehsinn. Polygonfläche = |Schnürsenkelformel|/2 (bei selbstüberschneidenden Polygonen ist das die vorzeichenbehaftete Summe, kein „Flächeninhalt der Vereinigung“). Kreisfläche/-umfang exakt als `π·r²`/`2π·r`.
 - **Exaktheit** wird nur behauptet, wenn jede Eingabe exakt ist: freie Punkte mit höchstens 6 Nachkommastellen (Raster-Fang erzeugt solche), Mittelpunkte, Schnitte von Geraden/Strecken/Strahlen, Lote, Parallelen, Mittelsenkrechten. Schnittpunkte mit Kreisen/Bögen und Winkelhalbierende sind **nur numerisch** (Folgemessungen dann `≈`). Winkel exakt als Gradzahl nur für 0/30/45/60/90/120/135/150/180°, sonst `arccos(…)` mit Näherung.
-- **Tests**: von 58 auf 86; Invarianten per festem Zufall (`rng`), nicht gesäte Fuzz-Läufe sind nicht nötig, weil die Zufallskonstruktion deterministisch ist.
+- **Punkte setzen/ziehen**: `geometry/snap.ts`. Erste Version rastete hart auf 0,5 ein (vom Nutzer als „zu snappy“ gemeldet). Jetzt: **sanfter Magnet** – jede Achse rastet nur ein, wenn der Zeiger höchstens 6 px von einer Rasterlinie entfernt ist (Rasterweite `niceStep(40/Maßstab)`, also 1 bei 40–50 px/Einheit); sonst frei, aber auf ein Zehntel Pixel als Zehnerpotenz gerundet (z. B. 0,001), damit freie Punkte **immer exakte Dezimalkoordinaten** behalten. Alt gedrückt halten schaltet den Magnet ab; Haken „Magnet“ in der Werkzeugleiste. Die Geometrie nutzt die Achsenskalen des Graphen (Shift/Alt-Zoom kann Kreise zu Ellipsen verzerren; Taste 1 = gleicher Maßstab).
+- **Tests**: von 58 auf 88; Invarianten per festem Zufall (`rng`), nicht gesäte Fuzz-Läufe sind nicht nötig, weil die Zufallskonstruktion deterministisch ist.
 - **Geprüft in der KI-Umgebung**: Tests, Logik-Typcheck (strict), React-Typcheck mit Ersatz-Typen (strict, auch `--noUnusedLocals` für die neuen Dateien). **Nicht geprüft**: echtes Rendering, Pointer-Verhalten, Fang, Leistung beim Ziehen, `vite build` mit echten `@types/react`.
 
 ### 5b. Sitzung „Fehler beheben, Grenzen verbessern“
@@ -234,7 +236,7 @@ Kanonische Formen: Negation `mul(-1,x)`, Differenz = Summe, Division `pow(x,-1)`
 12. **Keine Persistenz, kein Undo/Redo, kein Editor** (Abschnitt 4).
 13. **Tauri-Seite leer**: keine Rust-Befehle, kein Dateizugriff; `csp: null`; Bundle-Kennung `de.example.matheapp` ist ein Platzhalter. Nicht signierte `.exe` löst SmartScreen aus.
 14. Ausgaben sind **deutsch hartkodiert** (kein i18n).
-15. **Geometrie – Grenzen**: Oberfläche ungeprüft (siehe 5a). Kein „Punkt auf Objekt“ (jeder freie Punkt liegt frei in der Ebene; ein Punkt auf einer Geraden/einem Kreis lässt sich nur als Schnittpunkt konstruieren), keine Transformationen, Tangenten, Ortslinien, Texte, Winkel zwischen zwei Geraden, regelmäßigen Polygone. Schnittpunkte mit Kreisen sind numerisch; beim Ziehen durch eine Tangente (Doppelpunkt) verschwindet Index 1 und erscheint danach wieder – bei gleichzeitigem Wechsel der Reihenfolge entlang der Geraden können Index 0/1 vertauscht erscheinen. Objektliste rendert pro Bewegung alle LaTeX-Zeilen neu (bei sehr vielen Objekten Leistung prüfen). Geometrie hat eigene Ansicht, keine Verbindung zu Graph, Slidern oder Ausdrücken; keine Persistenz (Schritt 2). Sehr große Kreise werden nur im sichtbaren Winkelbereich abgetastet (Heuristik bei stark verzerrter Ansicht – dort ist die Ansicht aber ohnehin 1:1 voreingestellt, Zoom bleibt gleichmäßig).
+15. **Geometrie – Grenzen**: Oberfläche ungeprüft (siehe 5a). Kein „Punkt auf Objekt“ (jeder freie Punkt liegt frei in der Ebene; ein Punkt auf einer Geraden/einem Kreis lässt sich nur als Schnittpunkt konstruieren), keine Transformationen, Tangenten, Ortslinien, Texte, Winkel zwischen zwei Geraden, regelmäßigen Polygone. Schnittpunkte mit Kreisen sind numerisch; beim Ziehen durch eine Tangente (Doppelpunkt) verschwindet Index 1 und erscheint danach wieder – bei gleichzeitigem Wechsel der Reihenfolge entlang der Geraden können Index 0/1 vertauscht erscheinen. Objektliste rendert pro Bewegung alle LaTeX-Zeilen neu (bei sehr vielen Objekten Leistung prüfen). Die Geometrie teilt die Ansicht mit dem Graphen, ist aber sonst nicht mit Ausdrücken/Slidern verbunden (kein Funktionsgraph-Schnitt, keine Zahlenobjekte); keine Persistenz (Schritt 2). Sehr große Kreise werden nur im sichtbaren Winkelbereich abgetastet (Heuristik bei stark verzerrter Ansicht – dort ist die Ansicht aber ohnehin 1:1 voreingestellt, Zoom bleibt gleichmäßig).
 
 ---
 
@@ -269,7 +271,7 @@ Kanonische Formen: Negation `mul(-1,x)`, Differenz = Summe, Division `pow(x,-1)`
 ```
 npm install
 npm run tauri icon app-icon.png     # einmalig, erzeugt src-tauri/icons
-npm test                            # 86 Tests (Node >= 22.6)
+npm test                            # 88 Tests (Node >= 22.6)
 npm run tauri dev                   # Entwicklung
 npm run tauri build                 # Installer + exe in src-tauri/target/release
 ```
@@ -316,7 +318,7 @@ Neue Logik zuerst als reines Modul + Test; „exakt“ nur mit Beweis; UI-Texte 
 
 ## 9. Nächste Schritte (Priorität)
 
-0. **Geometrie im echten Fenster prüfen lassen**: Der Build bis einschließlich Analyse lief laut Nutzer („es funktioniert alles“). Den neuen Geometrie-Reiter muss der Nutzer erst pushen und prüfen: Punkte setzen/ziehen, „Beispiel laden“ und die Eckpunkte ziehen (Umkreis muss folgen), Fang, Auswahl/Löschen, Rückgängig. Bei roten Actions-Schritten Text kopieren lassen und sofort beheben (Erwartbar: Typfehler gegen echte `@types/react` in `GeometryView.tsx`).
+0. **Geometrie im echten Fenster prüfen lassen**: Der Build bis einschließlich Analyse lief laut Nutzer („es funktioniert alles“). Die Geometrie im Graphen (Werkzeugleisten über dem Graphen, Objektliste links unten) muss der Nutzer erst pushen und prüfen; er bestätigte zuvor die erste Geometrie-Fassung (eigener Reiter) als funktionierend: Punkte setzen/ziehen, „Beispiel laden“ und die Eckpunkte ziehen (Umkreis muss folgen), Fang, Auswahl/Löschen, Rückgängig. Bei roten Actions-Schritten Text kopieren lassen und sofort beheben (Erwartbar: Typfehler gegen echte `@types/react` in `GeometryView.tsx`).
 1. ~~Geometrie-Arbeitsbereich~~ – **Kern erledigt** (siehe 5a). Offene Erweiterungen, je nach Wunsch des Nutzers: **Punkt auf Objekt** (Parameter auf Gerade/Kreis, ziehbar), **Transformationen** (Spiegelung an Gerade/Punkt, Drehung, Verschiebung um Vektor, Streckung), **Tangenten** an Kreise, **Ortslinien**, Textobjekte, Winkel zwischen Geraden, regelmäßige Polygone, Eingabe von Koordinaten/Radius per Tastatur, Kopplung der Geometrie an Slider (Zahlenobjekte) und an den Graphen (Funktionsgraph im Geometrie-Reiter).
 2. **Persistenz und Projekte** (Auftrag Punkt 10): JSON-Format `{version, src (Original-LaTeX), sliders, view, settings}`; Autosave (zunächst `localStorage`, später Tauri-Dateisystem/SQLite), Projektliste (duplizieren/löschen), Import/Export JSON, Export PNG/SVG des Graphen (SVG aus `Shape`s erzeugen, PNG über `canvas.toBlob`), Export der Zeilen als LaTeX, Kopieren von Ergebnissen, Drucken.
 3. **Ausdruckspanel** (Auftrag Punkt 9) und **Editor** (Punkt 1): Zeilen als eigene Objekte mit ID (statt eines Textareas): Hinzufügen/Löschen/Umordnen (Drag), Ordner, Ein-/Ausblenden, Farbwahl, Notizen, Duplizieren, Umschalter „gerendert/LaTeX-Quelltext“, **Undo/Redo**. Für den WYSIWYG-Mathe-Editor mit Autovervollständigung/Syntaxfärbung ist eine Entscheidung nötig (offline bündelbare Bibliothek wie MathLive vs. eigener Editor auf Basis von `ParseError`-Positionen). `buildModel` dann auf Zeilen-Objekte umstellen und **Parse-Cache** einführen (löst zugleich Problem 2).
@@ -325,4 +327,4 @@ Neue Logik zuerst als reines Modul + Test; „exakt“ nur mit Beweis; UI-Texte 
 6. **Qualitätssicherung**: Fuzz-Tests ins Repo (`tests/fuzz.test.ts`: Parser mit Zufallsstrings, Ausdrucksgenerator mit Druck-/Vereinfachungs-/Ableitungsvergleich, Zufallskurven zeichnen); README bei jedem Schritt pflegen; Bundle-Identifier und Fenstertitel festlegen; ggf. Code-Signierung.
 7. **Mathematische Lücken** (je nach Bedarf, siehe Abschnitt 6): Analyse für parametrische/polare/implizite Kurven; Stammfunktionen für Produkte verschiedener Winkel und hyperbolische Potenzen; Quartiken durch Faktorisierung über ℚ in Quadratiken; exakte Schnittpunkte für weitere Systeme (Resultanten); isolierte Punkte bei impliziten Kurven; Grenzwerte als Graph-Objekte.
 
-**Erste Handlung in der neuen Konversation**: Projektdateien einlesen, `npm test` (86 grün) und beide Typchecks ausführen, dann die Rückmeldung des Nutzers zum Geometrie-Reiter (Schritt 0) abfragen bzw. einarbeiten und – wenn nichts Rotes gemeldet ist – ohne Rückfrage mit Schritt 2 (Persistenz und Projekte; die Geometrie-Konstruktion ist ein JSON-fähiges `Construction`-Objekt) fortfahren.
+**Erste Handlung in der neuen Konversation**: Projektdateien einlesen, `npm test` (88 grün) und beide Typchecks ausführen, dann die Rückmeldung des Nutzers zum Geometrie-Reiter (Schritt 0) abfragen bzw. einarbeiten und – wenn nichts Rotes gemeldet ist – ohne Rückfrage mit Schritt 2 (Persistenz und Projekte; die Geometrie-Konstruktion ist ein JSON-fähiges `Construction`-Objekt) fortfahren.

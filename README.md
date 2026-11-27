@@ -15,7 +15,6 @@ Parser, AST, Rechenengine, Graph und Geometrie sind eigene Module.
 4. Oben auf den Reiter **Actions** wechseln. Der Build "Windows-Build" startet automatisch (oder über "Run workflow"). Der erste Lauf dauert etwa 10–20 Minuten.
 5. Ist der Lauf grün, den Lauf anklicken und unten bei **Artifacts** herunterladen:
    - `installer-nsis`: Installer (.exe)
-   - `installer-msi`: MSI-Installer
    - `portable-exe`: portable `mathe-app.exe`
 6. Schlägt der Lauf fehl (rotes Kreuz): auf den Schritt klicken, der rot ist, und die Fehlermeldung kopieren.
 
@@ -61,14 +60,15 @@ Tests: `npm test` (laufen auch vor jedem Windows-Build; schlägt ein Test fehl, 
 - Im Integral beendet `d` + Variable den Integranden (`\int_0^1 x^2\,dx`).
 - `e`, `\pi`, `\tau`, `\infty` sind Konstanten.
 
-## Geometrie (`src/geometry`, `GeometryView.tsx`)
-Reiter „Geometrie“: dynamische Konstruktionen wie in GeoGebra. Freie Punkte lassen sich mit „Bewegen“ ziehen; alle davon abhängigen Objekte folgen.
+## Geometrie (`src/geometry`, im Graphen)
+Die Geometrie-Werkzeuge liegen direkt über dem Graphen und zeichnen in dasselbe Koordinatensystem wie die Funktionen; die Objektliste steht im linken Panel. Dynamische Konstruktionen wie in GeoGebra. Freie Punkte lassen sich mit „Bewegen“ ziehen; alle davon abhängigen Objekte folgen.
 
 - **Zeichnen**: Punkt, Gerade, Strecke, Strahl, Vektor, Kreis (Mittelpunkt + Punkt oder Radius), Bogen, Polygon.
 - **Konstruieren**: Mittelpunkt, Schnittpunkt (Gerade/Strecke/Strahl/Kreis/Bogen, mehrfach → Index), Senkrechte, Parallele, Mittelsenkrechte, Winkelhalbierende.
 - **Messen**: Abstand, Winkel, Fläche, Umfang – mit LaTeX-Ausgabe und, wo beweisbar, **exaktem Wert** (z. B. `2\sqrt{2}`, `8\pi`, `90^\circ`); sonst `\approx`.
-- Klick auf leere Fläche legt Punkte an (Raster-Fang erzeugt exakte Koordinaten). Strg+Z / Strg+Y, Entf löscht (samt abhängigen Objekten), Esc bricht ab.
-- Objektliste rechts: Gleichungen und Koordinaten als LaTeX, Ein-/Ausblenden, Löschen.
+- Klick auf leere Fläche legt Punkte an. Punkte rasten nur nahe an Rasterlinien ein (sanfter Magnet; Alt = aus), sonst bewegen sie sich frei und behalten exakte Dezimalkoordinaten. Strg+Z / Strg+Y, Entf löscht (samt abhängigen Objekten), Esc bricht ab.
+- Objektliste links: Gleichungen und Koordinaten als LaTeX, Ein-/Ausblenden, Löschen.
+- Bei logarithmischen Achsen ist die Geometrie ausgeschaltet.
 
 ### Noch nicht enthalten
 Transformationen/Tangenten/Ortslinien in der Geometrie, komplexe Zahlen, Vektor- und Matrixrechnung (Matrizen werden geparst und gesetzt), Folgen, Speichern/Export von Projekten,

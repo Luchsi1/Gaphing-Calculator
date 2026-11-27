@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import GraphView, { type HoverMarker } from "./GraphView.tsx";
+import GraphView, { type HoverMarker, type GeoBinding } from "./GraphView.tsx";
 import Tex from "./Tex.tsx";
 import type { PlotItem } from "./graph/items.ts";
 import type { LineInfo } from "./graph/model.ts";
@@ -32,6 +32,7 @@ interface Props {
   items: PlotItem[];
   lines: LineInfo[];
   onAddLine: (latex: string) => void;
+  geo?: GeoBinding;
 }
 
 function AddBtn({ onClick }: { onClick: () => void }) {
@@ -46,7 +47,7 @@ const Badge = ({ exact }: { exact: boolean }) => (
   <span className={exact ? "badge exact" : "badge approx"}>{exact ? "exakt" : "Näherung"}</span>
 );
 
-export default function GraphWorkspace({ items, lines, onAddLine }: Props) {
+export default function GraphWorkspace({ items, lines, onAddLine, geo }: Props) {
   const curves = useMemo(() => items.filter((i) => i.curve), [items]);
   const [sel, setSel] = useState<number | null>(null);
   const [sel2, setSel2] = useState<number | null>(null);
@@ -213,7 +214,7 @@ export default function GraphWorkspace({ items, lines, onAddLine }: Props) {
   return (
     <div className="workspace">
       <div className="graph-col">
-        <GraphView items={allItems} markers={markers} onRange={onRange} onPick={picking ? onPick : undefined} picking={picking} />
+        <GraphView items={allItems} geo={geo} markers={markers} onRange={onRange} onPick={picking ? onPick : undefined} picking={picking} />
       </div>
       <button className="panel-toggle" onClick={() => setOpen(!open)}>{open ? "Analyse ▸" : "◂ Analyse"}</button>
       {open && (

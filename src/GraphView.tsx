@@ -4,6 +4,12 @@ import {
   setScale, oneToOne, formatCoord,
 } from "./graph/viewport.ts";
 import type { PlotItem } from "./graph/items.ts";
+import { type History, commit as commitHistory, replace, checkpoint, undo, redo } from "./geometry/history.ts";
+import type { Values } from "./geometry/compute.ts";
+import { movePoint, removeObject, find, isFreePoint } from "./geometry/model.ts";
+import { renderGeometry, hitTest } from "./geometry/render.ts";
+import { type Tool, type PickResult, TOOLS, applyPick } from "./geometry/tools.ts";
+import { placePoint } from "./geometry/snap.ts";
 import { type DrawnItem, type GridOptions, LIGHT, DARK, drawBackground, drawItems, drawMarker } from "./graph/draw.ts";
 
 interface Hover {
@@ -43,8 +49,21 @@ export interface HoverMarker {
   color: string;
 }
 
+/** Anbindung der Geometrie: Konstruktion, Auswertung und Auswahl liegen in App (Liste im linken Panel). */
+export interface GeoBinding {
+  history: History;
+  setHistory: (f: (h: History) => History) => void;
+  vals: Values;
+  selected: string[];
+  setSelected: (s: string[] | ((p: string[]) => string[])) => void;
+}
+
+const GROUPS: ("Zeichnen" | "Konstruieren" | "Messen")[] = ["Zeichnen", "Konstruieren", "Messen"];
+const TOOL_IDS = Object.keys(TOOLS) as Tool[];
+
 interface Props {
   items: PlotItem[];
+  geo?: GeoBinding;
   /** Punkte mit Beschriftung, die beim Überfahren angezeigt wird */
   markers?: HoverMarker[];
   /** meldet den sichtbaren x-Bereich (verzögert) */
@@ -54,7 +73,7 @@ interface Props {
   picking?: boolean;
 }
 
-export default function GraphView({ items, markers, onRange, onPick, picking }: Props) {
+export default function GraphView({ items, geo, markers, onRange, onPick, picking }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -73,6 +92,33 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
   onRangeRef.current = onRange;
   const pickingRef = useRef<boolean>(!!picking);
   pickingRef.current = !!picking;
+
+  // Geometrie-Werkzeug und -Auswahl
+  const [tool, setTool] = useState<Tool>("move");
+  const [picks, setPicks] = useState<string[]>([]);
+  const [snapOn, setSnapOn] = useState<boolean>(true);
+  const [showLabels, setShowLabels] = useState<boolean>(true);
+  const [radiusText, setRadiusText] = useState<string>("2");
+  const [message, setMessage] = useState<string>("");
+  const selectedRef = useRef<string[]>(geo ? geo.selected : []);
+  selectedRef.current = geo ? geo.selected : [];
+  const geoRef = useRef(geo);
+  geoRef.current = geo;
+  const toolRef = useRef(tool);
+  toolRef.current = tool;
+  const picksRef = useRef(picks);
+  picksRef.current = picks;
+  const snapRef = useRef(snapOn);
+  snapRef.current = snapOn;
+  const radiusRef = useRef(radiusText);
+  radiusRef.current = radiusText;
+  const geoOn = !!geo && view.xScale === "linear" && view.yScale === "linear";
+
+  const chooseTool = (t: Tool): void => {
+    setTool(t);
+    setPicks([]);
+    setMessage("");
+  };
 
   useEffect(() => {
     if (canvasRef.current) canvasRef.current.style.cursor = picking ? "copy" : "crosshair";
@@ -107,41 +153,113 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
     return () => ro.disconnect();
   }, []);
 
-  // Maus: Ziehen = Verschieben, Rad = Zoom am Cursor (Shift: nur x, Alt: nur y), Doppelklick = Zurücksetzen
+  // Maus: Ziehen = Verschieben (oder freien Geometrie-Punkt ziehen), Rad = Zoom am Cursor (Shift: nur x, Alt: nur y),
+  // Klick = Geometrie-Werkzeug bzw. Auswahl, Doppelklick = Zurücksetzen
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     let drag: { x: number; y: number } | null = null;
     let moved = 0;
+    let dragPoint: string | null = null;
+    let dragStarted = false;
     const local = (e: MouseEvent): Hover => {
       const r = canvas.getBoundingClientRect();
       return { px: e.clientX - r.left, py: e.clientY - r.top };
     };
+    const geoActive = (): boolean => !!geoRef.current && viewRef.current.xScale === "linear" && viewRef.current.yScale === "linear";
+
+    const clickMove = (p: Hover, additive: boolean): void => {
+      const g = geoRef.current;
+      if (!g) return;
+      const hits = hitTest(g.history.present, g.vals, viewRef.current, p.px, p.py);
+      if (hits.length) {
+        const id = hits[0];
+        g.setSelected((prev) => (additive ? (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]) : [id]));
+      } else if (!additive) g.setSelected([]);
+    };
+
+    const clickTool = (p: Hover, noMagnet: boolean): void => {
+      const g = geoRef.current;
+      if (!g) return;
+      const v = viewRef.current;
+      const cc = g.history.present;
+      const t = toolRef.current;
+      const opts = { radius: Math.max(1e-9, Number(radiusRef.current.replace(",", ".")) || 1) };
+      const at = placePoint(v, p.px, p.py, snapRef.current && !noMagnet);
+      const picks0 = picksRef.current.filter((id) => !!find(cc, id));
+      let res: PickResult | null = null;
+      for (const id of hitTest(cc, g.vals, v, p.px, p.py)) {
+        const r = applyPick(cc, t, picks0, { type: "object", id }, opts);
+        if (!r.message) {
+          res = r;
+          break;
+        }
+      }
+      if (!res) res = applyPick(cc, t, picks0, { type: "empty", x: at.x, y: at.y }, opts);
+      if (res.message) {
+        setMessage(res.message);
+        return;
+      }
+      setMessage("");
+      const next = res.c;
+      if (next !== cc) g.setHistory((h) => commitHistory(h, next));
+      setPicks(res.picks);
+      g.setSelected(res.picks.length === 0 ? res.created : []);
+    };
+
     const down = (e: PointerEvent): void => {
       canvas.setPointerCapture(e.pointerId);
       drag = { x: e.clientX, y: e.clientY };
       moved = 0;
-      canvas.style.cursor = "grabbing";
+      dragPoint = null;
+      dragStarted = false;
+      const g = geoRef.current;
+      if (g && geoActive() && toolRef.current === "move") {
+        const p = local(e);
+        const hits = hitTest(g.history.present, g.vals, viewRef.current, p.px, p.py);
+        const free = hits.find((id) => isFreePoint(find(g.history.present, id)));
+        if (free) {
+          dragPoint = free;
+          g.setSelected([free]);
+        }
+      }
+      canvas.style.cursor = dragPoint ? "move" : "grabbing";
     };
     const move = (e: PointerEvent): void => {
-      setHover(local(e));
-      if (drag) {
-        const dx = e.clientX - drag.x;
-        const dy = e.clientY - drag.y;
-        drag = { x: e.clientX, y: e.clientY };
-        moved += Math.abs(dx) + Math.abs(dy);
+      const p = local(e);
+      setHover(p);
+      if (!drag) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      drag = { x: e.clientX, y: e.clientY };
+      moved += Math.abs(dx) + Math.abs(dy);
+      const g = geoRef.current;
+      if (dragPoint && g) {
+        if (moved < 3 && !dragStarted) return;
+        const id = dragPoint;
+        if (!dragStarted) {
+          dragStarted = true;
+          g.setHistory(checkpoint);
+        }
+        const at = placePoint(viewRef.current, p.px, p.py, snapRef.current && !e.altKey);
+        g.setHistory((h) => replace(h, movePoint(h.present, id, at.x, at.y)));
+      } else {
         setView((v) => pan(v, dx, dy));
       }
     };
     const up = (e: PointerEvent): void => {
       const wasClick = drag !== null && moved < 4 && e.type === "pointerup";
+      const wasDrag = dragPoint !== null;
       drag = null;
+      dragPoint = null;
       canvas.style.cursor = pickingRef.current ? "copy" : "crosshair";
-      if (wasClick && onPickRef.current) {
-        const p = local(e);
+      if (!wasClick || wasDrag) return;
+      const p = local(e);
+      if (geoActive() && toolRef.current !== "move") clickTool(p, e.altKey);
+      else if (onPickRef.current) {
         const v = viewRef.current;
         onPickRef.current({ x: xFromPx(v, p.px), y: yFromPx(v, p.py) });
-      }
+      } else if (geoActive()) clickMove(p, e.shiftKey || e.ctrlKey || e.metaKey);
     };
     const leave = (): void => {
       if (!drag) setHover(null);
@@ -154,7 +272,9 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
       const k = Math.exp(-d * 0.0015);
       setView((v) => zoomAt(v, px, py, e.altKey ? 1 : k, e.shiftKey ? 1 : k));
     };
-    const dbl = (): void => setView(resetView);
+    const dbl = (): void => {
+      if (toolRef.current === "move") setView(resetView);
+    };
     canvas.addEventListener("pointerdown", down);
     canvas.addEventListener("pointermove", move);
     canvas.addEventListener("pointerup", up);
@@ -173,7 +293,7 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
     };
   }, []);
 
-  // Tastatur (wenn der Graph den Fokus hat): + − Pfeile 0 1
+  // Tastatur (wenn der Graph den Fokus hat): + − Pfeile 0 1; Geometrie: Strg+Z/Y, Entf, Esc
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -182,6 +302,34 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       const big = e.shiftKey ? 200 : 50;
       let handled = true;
+      const g = geoRef.current;
+      const mod = e.ctrlKey || e.metaKey;
+      if (g && mod && (e.key === "z" || e.key === "Z")) {
+        g.setHistory(e.shiftKey ? redo : undo);
+        e.preventDefault();
+        return;
+      }
+      if (g && mod && (e.key === "y" || e.key === "Y")) {
+        g.setHistory(redo);
+        e.preventDefault();
+        return;
+      }
+      if (g && e.key === "Escape") {
+        setPicks([]);
+        setMessage("");
+        setTool("move");
+        g.setSelected([]);
+        e.preventDefault();
+        return;
+      }
+      if (g && (e.key === "Delete" || e.key === "Backspace")) {
+        const ids = selectedRef.current;
+        if (ids.length) g.setHistory((h) => commitHistory(h, ids.reduce((acc, id) => (find(acc, id) ? removeObject(acc, id) : acc), h.present)));
+        g.setSelected([]);
+        setPicks([]);
+        e.preventDefault();
+        return;
+      }
       switch (e.key) {
         case "+": case "=": setView((v) => zoomAt(v, v.width / 2, v.height / 2, 1.25, 1.25)); break;
         case "-": case "_": setView((v) => zoomAt(v, v.width / 2, v.height / 2, 0.8, 0.8)); break;
@@ -202,6 +350,12 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
   const drawn = useMemo<DrawnItem[]>(
     () => items.map((it) => ({ color: it.color, shapes: it.draw(view) })),
     [items, view]
+  );
+
+  const highlighted = useMemo(() => new Set([...(geo ? geo.selected : []), ...picks]), [geo, picks]);
+  const scene = useMemo(
+    () => (geo && geoOn ? renderGeometry(geo.history.present, geo.vals, view, highlighted, showLabels) : null),
+    [geo, geoOn, view, highlighted, showLabels]
   );
 
   // Funktionswert unter dem Cursor; rastet an einer Kurve ein, wenn sie nah genug ist
@@ -257,15 +411,49 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
     const theme = dark ? DARK : LIGHT;
     drawBackground(ctx, view, theme, grid);
     drawItems(ctx, view, drawn);
+    if (scene && geo) {
+      drawItems(ctx, view, scene.items);
+      // Gummiband vom zuletzt gewählten Punkt zum Mauszeiger
+      const lastPick = picks.length ? geo.vals[picks[picks.length - 1]] : null;
+      if (hover && lastPick && lastPick.t === "point" && tool !== "move") {
+        ctx.save();
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = theme.axis;
+        ctx.beginPath();
+        ctx.moveTo(xToPx(view, lastPick.x), yToPx(view, lastPick.y));
+        ctx.lineTo(hover.px, hover.py);
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "rgba(45,112,179,0.55)";
+      for (let i = 0; i < scene.halos.length; i += 2) {
+        ctx.beginPath();
+        ctx.arc(scene.halos[i], scene.halos[i + 1], 10, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.font = "600 13px system-ui, 'Segoe UI', sans-serif";
+      ctx.textBaseline = "alphabetic";
+      ctx.textAlign = "left";
+      for (const l of scene.labels) {
+        if (l.px < -50 || l.px > view.width + 50 || l.py < -20 || l.py > view.height + 20) continue;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = theme.bg;
+        ctx.strokeText(l.text, l.px, l.py);
+        ctx.fillStyle = l.color;
+        ctx.fillText(l.text, l.px, l.py);
+      }
+    }
     if (hoverMarker) {
       ctx.beginPath();
       ctx.arc(xToPx(view, hoverMarker.x), yToPx(view, hoverMarker.y), 10, 0, Math.PI * 2);
       ctx.lineWidth = 2;
       ctx.strokeStyle = hoverMarker.color;
       ctx.stroke();
-    } else if (info && hover && info.snap) drawMarker(ctx, hover.px, info.snap.py, info.snap.color, theme);
+    } else if (info && hover && info.snap && !(geoOn && tool !== "move")) drawMarker(ctx, hover.px, info.snap.py, info.snap.color, theme);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, drawn, dark, gridKey, info, hover, hoverMarker]);
+  }, [view, drawn, dark, gridKey, info, hover, hoverMarker, scene, picks, tool]);
 
   const r = ranges(view);
 
@@ -290,6 +478,34 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
         <label>Raster x <input className="num" placeholder="auto" value={gridX} onChange={(e: { target: { value: string } }) => setGridX(e.target.value)} /></label>
         <label>y <input className="num" placeholder="auto" value={gridY} onChange={(e: { target: { value: string } }) => setGridY(e.target.value)} /></label>
       </div>
+      {geo && (
+        <>
+          <div className="toolbar tools">
+            {GROUPS.map((g) => (
+              <span className="toolgroup" key={g}>
+                <b>{g}</b>
+                {TOOL_IDS.filter((t) => TOOLS[t].group === g).map((t) => (
+                  <button key={t} className={tool === t ? "tool-btn on" : "tool-btn"} onClick={() => chooseTool(t)} title={TOOLS[t].hint}>
+                    {TOOLS[t].label}
+                  </button>
+                ))}
+              </span>
+            ))}
+          </div>
+          <div className="toolbar">
+            <button onClick={() => geo.setHistory(undo)} disabled={!geo.history.past.length} title="Rückgängig (Strg+Z)">Rückgängig</button>
+            <button onClick={() => geo.setHistory(redo)} disabled={!geo.history.future.length} title="Wiederholen (Strg+Y)">Wiederholen</button>
+            <label title="Punkte rasten nahe an Rasterlinien ein (Alt gedrückt halten: nie einrasten)"><input type="checkbox" checked={snapOn} onChange={(e: { target: { checked: boolean } }) => setSnapOn(e.target.checked)} /> Magnet</label>
+            <label><input type="checkbox" checked={showLabels} onChange={(e: { target: { checked: boolean } }) => setShowLabels(e.target.checked)} /> Beschriftung</label>
+            {tool === "circler" && (
+              <label>
+                Radius <input className="num" value={radiusText} onChange={(e: { target: { value: string } }) => setRadiusText(e.target.value)} />
+              </label>
+            )}
+            {!geoOn && <span className="note">Geometrie braucht lineare Achsen (x log / y log ausschalten).</span>}
+          </div>
+        </>
+      )}
       <div className="toolbar">
         {RANGE_KEYS.map(({ key, label }) => (
           <label key={key}>
@@ -311,7 +527,15 @@ export default function GraphView({ items, markers, onRange, onPick, picking }: 
         <canvas ref={canvasRef} style={{ cursor: "crosshair", touchAction: "none" }} />
       </div>
       <div className="status">
-        {hoverMarker ? (
+        {message ? (
+          <span className="error">{message}</span>
+        ) : geoOn && tool !== "move" ? (
+          <span>
+            {TOOLS[tool].hint}
+            {picks.length > 0 && geo ? ` Gewählt: ${picks.map((id) => find(geo.history.present, id)?.name ?? "?").join(", ")}.` : ""}
+            {hover ? ` (x = ${formatCoord(xFromPx(view, hover.px))}, y = ${formatCoord(yFromPxSafe(view, hover))})` : ""}
+          </span>
+        ) : hoverMarker ? (
           <span style={{ color: hoverMarker.color }}>{hoverMarker.label}</span>
         ) : picking ? (
           <span>Klicke auf den Graphen, um die Stelle zu wählen …</span>

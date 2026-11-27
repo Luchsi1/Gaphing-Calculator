@@ -102,8 +102,10 @@ function ordered(spec: ToolSpec, c: Construction, picks: string[]): string[] {
   return out;
 }
 
-export function applyPick(c0: Construction, tool: Tool, picks0: string[], target: Target, opts: ToolOptions = { radius: 1 }): PickResult {
+export function applyPick(c0: Construction, tool: Tool, picksIn: string[], target: Target, opts: ToolOptions = { radius: 1 }): PickResult {
   const spec = TOOLS[tool];
+  // Auswahlen, deren Objekte inzwischen gelöscht wurden (Rückgängig, Löschen), werden verworfen
+  const picks0 = picksIn.every((p) => find(c0, p)) ? picksIn : picksIn.filter((p) => find(c0, p));
   let c = c0;
   const created: string[] = [];
   const add = (d: Def): string => {
